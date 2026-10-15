@@ -117,18 +117,24 @@ describe("rendering customisation", () => {
       isExpanded: true,
       isDisabled: false,
       hasChildren: true,
+      isSelected: false,
+      isFocused: false,
     });
     expect(renderNode).toHaveBeenCalledWith(expect.objectContaining({ id: "c" }), {
       depth: 0,
       isExpanded: false,
       isDisabled: true,
       hasChildren: true,
+      isSelected: false,
+      isFocused: false,
     });
     expect(renderNode).toHaveBeenCalledWith(expect.objectContaining({ id: "a2" }), {
       depth: 1,
       isExpanded: false,
       isDisabled: false,
       hasChildren: false,
+      isSelected: false,
+      isFocused: false,
     });
   });
 

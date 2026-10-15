@@ -14,6 +14,10 @@ export interface RenderNodeState {
   isExpanded: boolean;
   isDisabled: boolean;
   hasChildren: boolean;
+  /** This node is the selected one. */
+  isSelected: boolean;
+  /** The tree has focus and this is its focused row. */
+  isFocused: boolean;
 }
 
 export interface TreeViewProps<T = unknown> {
@@ -22,6 +26,15 @@ export interface TreeViewProps<T = unknown> {
   defaultExpandedIds?: ReadonlyArray<TreeNode["id"]>;
   /** Called on every expand/collapse with the updated set of expanded ids. */
   onExpandedChange?: (expandedIds: Array<TreeNode["id"]>) => void;
+  /**
+   * Controlled selection. When defined the selection only changes when the parent updates
+   * it (`null` = nothing selected); `onSelect` is still called on every user selection.
+   */
+  selectedId?: TreeNode["id"] | null;
+  /** Initially selected id for the uncontrolled mode (read on mount only). */
+  defaultSelectedId?: TreeNode["id"];
+  /** Called when the user selects an enabled node (click, Enter or Space). */
+  onSelect?: (id: TreeNode["id"], node: TreeNode<T>) => void;
   /** Pixels of indentation per depth level. Default 24. */
   indentation?: number;
   /** Custom row content. Defaults to the node `label`. */

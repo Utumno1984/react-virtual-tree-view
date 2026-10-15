@@ -1,4 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { useState } from "react";
+import type * as React from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { TreeView } from "../src";
 import { generateTree } from "./data/generateTree";
@@ -52,6 +54,8 @@ const meta = {
     rowClassName: (state: RenderNodeState) =>
       `flex items-center gap-1 rounded px-1 py-1 hover:bg-gray-100 ${
         state.isDisabled ? "text-gray-400" : ""
+      } ${state.isSelected ? "bg-blue-100 font-medium" : ""} ${
+        state.isFocused ? "outline outline-2 outline-blue-500" : ""
       }`,
     renderIcon: Icon,
   },
@@ -84,6 +88,32 @@ export const SingleNode: Story = {
 
 export const WithDisabledNodes: Story = {
   args: { data: disabledTree },
+};
+
+function findLabel(nodes: TreeNode[], id: TreeNode["id"] | null): string | null {
+  for (const n of nodes) {
+    if (n.id === id) return n.label;
+    const found = n.children ? findLabel(n.children, id) : null;
+    if (found !== null) return found;
+  }
+  return null;
+}
+
+function ControlledSelectionDemo(props: React.ComponentProps<typeof TreeView>) {
+  const [selectedId, setSelectedId] = useState<TreeNode["id"] | null>(null);
+  const label = findLabel(basicTree, selectedId);
+  return (
+    <div className="space-y-2">
+      <TreeView {...props} selectedId={selectedId} onSelect={(id) => setSelectedId(id)} />
+      <p data-testid="selection">Selezionato: {label ?? "nessuno"}</p>
+    </div>
+  );
+}
+
+/** Selection owned by the parent (`selectedId` + `onSelect`); try Tab, arrows, Home/End, Enter. */
+export const ControlledSelection: Story = {
+  args: { defaultExpandedIds: ["docs"] },
+  render: (args) => <ControlledSelectionDemo {...args} />,
 };
 
 const largeTree = generateTree({ count: 1200, maxDepth: 4, seed: 7 });
