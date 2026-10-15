@@ -201,3 +201,100 @@ describe("TreeView virtualization", () => {
     expect(firstIndex()).toBe(95);
   });
 });
+
+describe("computeRange cap with unaligned scroll", () => {
+  it("never exceeds ceil(h/rowHeight) + 2*overscan rows and still covers the viewport", () => {
+    const cap = Math.ceil(400 / 32) + 2 * 5;
+    for (let top = 0; top <= 31600; top += 7) {
+      const { start, end } = computeRange(top, 400, 32, 5, 1000);
+      expect(end - start).toBeLessThanOrEqual(cap);
+      expect(start * 32).toBeLessThanOrEqual(top);
+      expect(end * 32).toBeGreaterThanOrEqual(Math.min(top + 400, 32000));
+    }
+  });
+  it("covers the viewport with overscan 0 and an unaligned scroll", () => {
+    const { start, end } = computeRange(3210, 400, 32, 0, 1000);
+    expect(start * 32).toBeLessThanOrEqual(3210);
+    expect(end * 32).toBeGreaterThanOrEqual(3610);
+  });
+});
+
+class FakeRO {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
+describe("TreeView virtualization fixes", () => {
+  it("renders at most ceil(h/rowHeight) + 2*overscan rows with an unaligned scroll", () => {
+    render(<TreeView data={flat(1000)} height={400} rowHeight={32} />);
+    fireEvent.scroll(tree(), { target: { scrollTop: 3210 } });
+    expect(items().length).toBeLessThanOrEqual(Math.ceil(400 / 32) + 2 * 5);
+    expect(items().length).toBeGreaterThan(13);
+  });
+
+  it("never mounts all the rows before the first measurement (ResizeObserver present)", () => {
+    vi.stubGlobal("ResizeObserver", FakeRO);
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(400);
+    const create = vi.spyOn(document, "createElement");
+    render(<TreeView data={flat(10000)} rowHeight={32} />);
+    const divs = create.mock.calls.filter(([tag]) => tag === "div").length;
+    expect(divs).toBeLessThan(100);
+    expect(items().length).toBeLessThanOrEqual(Math.ceil(400 / 32) + 10);
+    expect(items().length).toBeGreaterThan(0);
+  });
+
+  it("renders only a minimal window while the container has no height (display: none)", () => {
+    vi.stubGlobal("ResizeObserver", FakeRO);
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(0);
+    render(<TreeView data={flat(10000)} rowHeight={32} />);
+    expect(items().length).toBeGreaterThan(0);
+    expect(items().length).toBeLessThanOrEqual(10);
+  });
+
+  it("does not set an inline height when the prop is missing", () => {
+    render(<TreeView data={flat(10)} className="h-96" />);
+    expect(tree().style.height).toBe("");
+    expect(tree().getAttribute("style") ?? "").not.toContain("height");
+    expect(tree().className).toBe("h-96");
+  });
+
+  it("applies no height/overflow to an empty tree and keeps emptyState adjacent", () => {
+    render(<TreeView data={[]} height={400} emptyState={<p>Nothing</p>} />);
+    expect(tree().style.height).toBe("");
+    expect(tree().style.overflow).toBe("");
+    expect(screen.getByText("Nothing")).toBeTruthy();
+  });
+
+  it("falls back to a safe rowHeight and warns when rowHeight <= 0", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    render(<TreeView data={flat(5)} height={400} rowHeight={0} />);
+    const tops = items().map((el) => el.style.top);
+    expect(new Set(tops).size).toBe(5);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("rowHeight"));
+  });
+
+  it("has displayName TreeView", () => {
+    expect((TreeView as unknown as { displayName?: string }).displayName).toBe("TreeView");
+  });
+
+  it("does not re-render rows on scroll events that keep the same window", () => {
+    const renderNode = vi.fn((n: TreeNode) => n.label);
+    render(<TreeView data={flat(1000)} height={400} rowHeight={32} renderNode={renderNode} />);
+    fireEvent.scroll(tree(), { target: { scrollTop: 3200 } });
+    renderNode.mockClear();
+    fireEvent.scroll(tree(), { target: { scrollTop: 3205 } });
+    fireEvent.scroll(tree(), { target: { scrollTop: 3210 } });
+    expect(renderNode).not.toHaveBeenCalled();
+    fireEvent.scroll(tree(), { target: { scrollTop: 3300 } });
+    expect(renderNode).toHaveBeenCalled();
+  });
+
+  it("warns in dev when an unsized tree is as tall as all its rows", () => {
+    vi.stubGlobal("ResizeObserver", FakeRO);
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(300 * 32);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    render(<TreeView data={flat(300)} rowHeight={32} />);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("not virtualized"));
+  });
+});

@@ -69,6 +69,15 @@ export const Empty: Story = {
   },
 };
 
+/** An empty tree with a fixed `height`: the empty state sits right below, not under a blank box. */
+export const EmptyWithHeight: Story = {
+  args: {
+    data: [],
+    height: 400,
+    emptyState: <p className="p-2 text-gray-500">Nothing to show</p>,
+  },
+};
+
 export const SingleNode: Story = {
   args: { data: [{ id: "only", label: "Only node" }] },
 };
@@ -87,6 +96,17 @@ const largeTreeParentIds: string[] = [];
     }
   }
 })(largeTree);
+
+/** Same tree, but the first parent starts collapsed (expanding it moves rows below it). */
+export const LargeTreeFirstParentCollapsed: Story = {
+  args: {
+    data: largeTree,
+    defaultExpandedIds: largeTreeParentIds.slice(1),
+    height: 400,
+    rowHeight: 32,
+    "aria-label": "Large tree, first parent collapsed",
+  },
+};
 
 /** 1200 nodes, all expanded: only the visible rows (plus overscan) are in the DOM. */
 export const LargeTree: Story = {

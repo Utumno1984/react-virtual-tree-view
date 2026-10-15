@@ -33,7 +33,7 @@ function TreeViewInner<T = unknown>(
   defaultExpandedIds,
   onExpandedChange,
   indentation = DEFAULT_INDENTATION,
-  rowHeight = DEFAULT_ROW_HEIGHT,
+  rowHeight: rowHeightProp = DEFAULT_ROW_HEIGHT,
   height,
   overscan = DEFAULT_OVERSCAN,
   renderNode,
@@ -47,6 +47,9 @@ function TreeViewInner<T = unknown>(
   ref: ForwardedRef<TreeViewHandle>,
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
+  // A non-positive or non-finite rowHeight would stack every row at top:0.
+  const rowHeight =
+    Number.isFinite(rowHeightProp) && rowHeightProp > 0 ? rowHeightProp : DEFAULT_ROW_HEIGHT;
   const [expanded, setExpanded] = useState<ReadonlySet<TreeId>>(
     () => new Set(defaultExpandedIds),
   );
@@ -76,7 +79,7 @@ function TreeViewInner<T = unknown>(
     });
   }, [data, expanded]);
 
-  const { start, end, totalHeight, onScroll, scrollToIndex } = useVirtualRows({
+  const { start, end, viewport, totalHeight, onScroll, scrollToIndex } = useVirtualRows({
     count: rows.length,
     rowHeight,
     overscan,
@@ -94,6 +97,28 @@ function TreeViewInner<T = unknown>(
     }),
     [rows, scrollToIndex],
   );
+
+  useEffect(() => {
+    if (!isDevelopment() || rowHeight === rowHeightProp) return;
+    console.warn(
+      `[react-virtual-tree-view] Invalid rowHeight (${String(rowHeightProp)}): ` +
+        `it must be a positive number. Using ${DEFAULT_ROW_HEIGHT}.`,
+    );
+  }, [rowHeight, rowHeightProp]);
+
+  const warnedNoHeight = useRef(false);
+  useEffect(() => {
+    // Without `height` the container must be sized by the consumer's CSS; if it just
+    // grows to fit all rows, nothing is virtualized.
+    if (!isDevelopment() || warnedNoHeight.current) return;
+    if (height === undefined && rows.length > 200 && viewport >= rows.length * rowHeight) {
+      warnedNoHeight.current = true;
+      console.warn(
+        "[react-virtual-tree-view] The tree is as tall as all its rows, so rows are not " +
+          "virtualized. Pass the `height` prop or give the tree a bounded height via CSS.",
+      );
+    }
+  }, [height, rows.length, rowHeight, viewport]);
 
   const warnedDuplicates = useRef("");
 
@@ -135,7 +160,13 @@ function TreeViewInner<T = unknown>(
         aria-label={ariaLabel}
         aria-labelledby={ariaLabelledBy}
         onScroll={onScroll}
-        style={{ overflow: "auto", height: height ?? "100%", boxSizing: "border-box" }}
+        // `height` is set only when the prop is given, so the consumer's CSS can size the
+        // tree; an empty tree gets no height/overflow so `emptyState` sits right below it.
+        style={
+          rows.length === 0
+            ? undefined
+            : { overflow: "auto", height, boxSizing: "border-box" }
+        }
       >
         <div role="none" style={{ position: "relative", height: totalHeight }}>
         {rows.slice(start, end).map(({ item, key, setSize, posInSet }) => {
@@ -203,6 +234,9 @@ function TreeViewInner<T = unknown>(
   );
 }
 
-export const TreeView = forwardRef(TreeViewInner) as <T = unknown>(
+const ForwardedTreeView = forwardRef(TreeViewInner);
+ForwardedTreeView.displayName = "TreeView";
+
+export const TreeView = ForwardedTreeView as <T = unknown>(
   props: TreeViewProps<T> & { ref?: ForwardedRef<TreeViewHandle> },
 ) => ReactElement | null;

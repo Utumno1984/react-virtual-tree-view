@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 
 export interface VirtualRange {
@@ -8,10 +8,19 @@ export interface VirtualRange {
   end: number;
 }
 
+// `useLayoutEffect` warns when rendering on the server; the effect only matters in the browser.
+const useIsomorphicLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
+
 /**
  * Rows to render for a fixed-height list. O(1): the range comes from `scrollTop` and
  * `rowHeight` only, never from measuring rows.
- * A viewport of 0 (not measured yet, e.g. no layout) renders every row.
+ *
+ * With `overscan >= 1` the range never exceeds `ceil(viewportHeight / rowHeight) + 2 * overscan`
+ * rows, even when the scroll position is not row-aligned (the partially visible row
+ * takes the place of one overscan row). With `overscan = 0` an unaligned scroll
+ * needs one extra row to avoid an uncovered strip.
+ * A viewport of 0 (not measured yet, e.g. no layout) renders every row; `useVirtualRows`
+ * avoids that case when a `ResizeObserver` is available.
  */
 export function computeRange(
   scrollTop: number,
@@ -28,7 +37,9 @@ export function computeRange(
   const first = Math.floor(top / rowHeight);
   const last = Math.ceil((top + viewportHeight) / rowHeight);
   const start = Math.min(count, Math.max(0, first - over));
-  const end = Math.min(count, Math.max(start, last + over));
+  const cap = start + Math.ceil(viewportHeight / rowHeight) + 2 * over;
+  const wanted = over >= 1 ? Math.min(last + over, cap) : last;
+  const end = Math.min(count, Math.max(start, wanted));
   return { start, end };
 }
 
@@ -41,14 +52,31 @@ interface Options {
   containerRef: RefObject<HTMLDivElement | null>;
 }
 
+function sameRange(a: VirtualRange, b: VirtualRange): boolean {
+  return a.start === b.start && a.end === b.end;
+}
+
 export function useVirtualRows({ count, rowHeight, overscan, height, containerRef }: Options) {
   const [scrollTop, setScrollTop] = useState(0);
   const [measured, setMeasured] = useState(0);
   const viewport = height ?? measured;
-  const viewportRef = useRef(viewport);
-  viewportRef.current = viewport;
 
-  useEffect(() => {
+  const compute = (top: number, view: number): VirtualRange => {
+    // Not measured yet: with a ResizeObserver a measurement is on its way, so render a
+    // small window instead of every row (10,000 nodes must never be mounted at once).
+    if (!(view > 0) && typeof ResizeObserver !== "undefined") {
+      const minimal = Math.max(1, 2 * Math.max(0, Math.floor(overscan)));
+      return { start: 0, end: Math.min(count, minimal) };
+    }
+    return computeRange(top, view, rowHeight, overscan, count);
+  };
+  const range = compute(scrollTop, viewport);
+
+  // Latest values for the scroll handler, which must not change identity on every render.
+  const latest = useRef({ compute, range, viewport });
+  latest.current = { compute, range, viewport };
+
+  useIsomorphicLayoutEffect(() => {
     if (height !== undefined) return;
     const el = containerRef.current;
     if (!el) return;
@@ -59,19 +87,28 @@ export function useVirtualRows({ count, rowHeight, overscan, height, containerRe
     return () => observer.disconnect();
   }, [height, containerRef]);
 
-  const onScroll = useCallback(
-    (event: { currentTarget: { scrollTop: number } }) => {
-      setScrollTop(event.currentTarget.scrollTop);
-    },
-    [],
-  );
+  // When what the range depends on changes, re-read the real scroll position (the
+  // scroll handler skips updates that would not change the range).
+  useIsomorphicLayoutEffect(() => {
+    const el = containerRef.current;
+    if (el) setScrollTop(el.scrollTop);
+  }, [containerRef, count, rowHeight, overscan, viewport]);
+
+  const onScroll = useCallback((event: { currentTarget: { scrollTop: number } }) => {
+    const top = event.currentTarget.scrollTop;
+    const { compute: current, range: rendered, viewport: view } = latest.current;
+    // Re-render only when the visible window actually changes.
+    if (!sameRange(current(top, view), rendered)) setScrollTop(top);
+  }, []);
 
   /** Scrolls so that row `index` is fully inside the viewport (no-op if it already is). */
   const scrollToIndex = useCallback(
     (index: number) => {
       const el = containerRef.current;
       if (!el || index < 0 || index >= count) return;
-      const view = viewportRef.current || el.clientHeight;
+      // clientHeight excludes borders and a horizontal scrollbar; fall back to the
+      // known viewport when there is no layout (jsdom).
+      const view = el.clientHeight || latest.current.viewport;
       const rowTop = index * rowHeight;
       let next = el.scrollTop;
       if (rowTop < next) next = rowTop;
@@ -83,6 +120,5 @@ export function useVirtualRows({ count, rowHeight, overscan, height, containerRe
     [containerRef, count, rowHeight],
   );
 
-  const range = computeRange(scrollTop, viewport, rowHeight, overscan, count);
-  return { ...range, totalHeight: count * rowHeight, onScroll, scrollToIndex };
+  return { ...range, viewport, totalHeight: count * rowHeight, onScroll, scrollToIndex };
 }
