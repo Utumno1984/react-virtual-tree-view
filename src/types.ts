@@ -32,8 +32,20 @@ export interface TreeViewProps<T = unknown> {
   rowClassName?: string | ((state: RenderNodeState) => string);
   /** Rendered next to (not inside) the `role="tree"` container when `data` is empty. */
   emptyState?: React.ReactNode;
+  /** Height in px of every row (fixed). Default 32. */
+  rowHeight?: number;
+  /** Viewport height in px. When omitted the tree fills its parent (give the parent a height). */
+  height?: number;
+  /** Extra rows rendered above and below the visible area. Default 5. */
+  overscan?: number;
   /** Accessible name of the tree. */
   "aria-label"?: string;
   /** Id of the element that names the tree. */
   "aria-labelledby"?: string;
+}
+
+/** Imperative handle exposed through `ref`. */
+export interface TreeViewHandle {
+  /** Scrolls the row of `id` into view. No-op for unknown ids or nodes in a collapsed branch. */
+  scrollToId: (id: TreeNode["id"]) => void;
 }

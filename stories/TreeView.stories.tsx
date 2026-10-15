@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { TreeView } from "../src";
+import { generateTree } from "./data/generateTree";
 import type { RenderNodeState, TreeNode } from "../src";
 
 const basicTree: TreeNode[] = [
@@ -74,4 +75,26 @@ export const SingleNode: Story = {
 
 export const WithDisabledNodes: Story = {
   args: { data: disabledTree },
+};
+
+const largeTree = generateTree({ count: 1200, maxDepth: 4, seed: 7 });
+const largeTreeParentIds: string[] = [];
+(function collect(nodes: TreeNode[]) {
+  for (const n of nodes) {
+    if (n.children?.length) {
+      largeTreeParentIds.push(String(n.id));
+      collect(n.children);
+    }
+  }
+})(largeTree);
+
+/** 1200 nodes, all expanded: only the visible rows (plus overscan) are in the DOM. */
+export const LargeTree: Story = {
+  args: {
+    data: largeTree,
+    defaultExpandedIds: largeTreeParentIds,
+    height: 400,
+    rowHeight: 32,
+    "aria-label": "Large tree",
+  },
 };

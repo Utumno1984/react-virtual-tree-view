@@ -1,9 +1,21 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import type { ForwardedRef, ReactElement } from "react";
 import { findDuplicateIds, flattenTree } from "./tree-utils";
 import type { TreeId } from "./tree-utils";
-import type { RenderNodeState, TreeNode, TreeViewProps } from "./types";
+import type { RenderNodeState, TreeNode, TreeViewHandle, TreeViewProps } from "./types";
+import { useVirtualRows } from "./useVirtualRows";
 
 const DEFAULT_INDENTATION = 24;
+const DEFAULT_ROW_HEIGHT = 32;
+const DEFAULT_OVERSCAN = 5;
 
 function isDevelopment(): boolean {
   // `process.env.NODE_ENV` must stay a literal expression: bundlers (Vite, webpack)
@@ -15,11 +27,15 @@ function isDevelopment(): boolean {
   }
 }
 
-export function TreeView<T = unknown>({
+function TreeViewInner<T = unknown>(
+  {
   data,
   defaultExpandedIds,
   onExpandedChange,
   indentation = DEFAULT_INDENTATION,
+  rowHeight = DEFAULT_ROW_HEIGHT,
+  height,
+  overscan = DEFAULT_OVERSCAN,
   renderNode,
   renderIcon,
   className,
@@ -27,7 +43,10 @@ export function TreeView<T = unknown>({
   emptyState,
   "aria-label": ariaLabel,
   "aria-labelledby": ariaLabelledBy,
-}: TreeViewProps<T>) {
+}: TreeViewProps<T>,
+  ref: ForwardedRef<TreeViewHandle>,
+) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState<ReadonlySet<TreeId>>(
     () => new Set(defaultExpandedIds),
   );
@@ -56,6 +75,25 @@ export function TreeView<T = unknown>({
       return { item, key, setSize, posInSet: counters[depth] };
     });
   }, [data, expanded]);
+
+  const { start, end, totalHeight, onScroll, scrollToIndex } = useVirtualRows({
+    count: rows.length,
+    rowHeight,
+    overscan,
+    height,
+    containerRef,
+  });
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      scrollToId(id) {
+        const index = rows.findIndex((row) => row.item.id === id);
+        if (index >= 0) scrollToIndex(index);
+      },
+    }),
+    [rows, scrollToIndex],
+  );
 
   const warnedDuplicates = useRef("");
 
@@ -91,12 +129,16 @@ export function TreeView<T = unknown>({
   return (
     <>
       <div
+        ref={containerRef}
         role="tree"
         className={className}
         aria-label={ariaLabel}
         aria-labelledby={ariaLabelledBy}
+        onScroll={onScroll}
+        style={{ overflow: "auto", height: height ?? "100%", boxSizing: "border-box" }}
       >
-        {rows.map(({ item, key, setSize, posInSet }) => {
+        <div role="none" style={{ position: "relative", height: totalHeight }}>
+        {rows.slice(start, end).map(({ item, key, setSize, posInSet }) => {
           const { node, depth, hasChildren } = item;
           const isExpanded = hasChildren && expanded.has(node.id);
           const isDisabled = !!node.isDisabled;
@@ -122,7 +164,15 @@ export function TreeView<T = unknown>({
               aria-posinset={posInSet}
               aria-expanded={hasChildren ? isExpanded : undefined}
               aria-disabled={isDisabled ? true : undefined}
-              style={{ paddingLeft: depth * indentation }}
+              style={{
+                position: "absolute",
+                top: item.index * rowHeight,
+                left: 0,
+                right: 0,
+                height: rowHeight,
+                boxSizing: "border-box",
+                paddingLeft: depth * indentation,
+              }}
             >
               <span
                 data-toggle=""
@@ -146,8 +196,13 @@ export function TreeView<T = unknown>({
             </div>
           );
         })}
+        </div>
       </div>
       {rows.length === 0 && emptyState}
     </>
   );
 }
+
+export const TreeView = forwardRef(TreeViewInner) as <T = unknown>(
+  props: TreeViewProps<T> & { ref?: ForwardedRef<TreeViewHandle> },
+) => ReactElement | null;
