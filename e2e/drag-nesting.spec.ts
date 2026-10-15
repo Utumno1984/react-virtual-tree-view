@@ -181,6 +181,60 @@ test.describe("DraggableTreeView nesting", () => {
     await expect(node(page, "B")).not.toHaveAttribute("data-dragging", "");
   });
 
+  test("a cancelled drag does not leak its result into the next drag over the same row", async ({
+    page,
+  }) => {
+    await page.goto(story("draggable"));
+    // C1 over B's row (same x: the depth stays 3), then Esc
+    const b = await center(page, "B");
+    await dragBy(page, "C1", 0, b.y - (await center(page, "C1")).y);
+    await expect(indicator(page)).toBeVisible();
+    await page.keyboard.press("Escape");
+    await page.mouse.up();
+    await expect(log(page)).toContainText("none yet");
+    // now B itself, released on the spot (same row, same steps): nothing may move
+    await dragBy(page, "B", 0);
+    await page.mouse.up();
+    await expect(log(page)).toContainText("none yet");
+    expect(await order(page)).toEqual(["p", "A", "B", "C", "C1", "D", "docs", "cv", "notes", "misc"]);
+  });
+
+  test("an only child released in place does not call onTreeChange", async ({ page }) => {
+    await page.goto(story("draggable"));
+    await dragBy(page, "C1", 0);
+    await expect(indicator(page)).toHaveAttribute("data-projected-depth", "2");
+    await page.mouse.up();
+    await expect(log(page)).toContainText("none yet");
+  });
+
+  test("a root dropped on a child lands between the children of that open parent", async ({
+    page,
+  }) => {
+    await page.goto(story("draggable"));
+    const notes = await center(page, "notes");
+    await dragBy(page, "misc", 0, notes.y - (await center(page, "misc")).y);
+    await expect(indicator(page)).toHaveAttribute("data-projected-depth", "1");
+    await page.mouse.up();
+    await expect(log(page)).toContainText(
+      '{"nodeId":"misc","fromParentId":null,"toParentId":"docs","index":1}',
+    );
+    expect(await order(page)).toEqual(["p", "A", "B", "C", "C1", "D", "docs", "cv", "misc", "notes"]);
+  });
+
+  test("a root dropped on the first child of an open parent becomes its first child, at any dx", async ({
+    page,
+  }) => {
+    await page.goto(story("draggable"));
+    const a = await center(page, "A");
+    await dragBy(page, "misc", 0, a.y - (await center(page, "misc")).y);
+    await expect(indicator(page)).toHaveAttribute("data-projected-depth", "1");
+    await page.mouse.up();
+    await expect(log(page)).toContainText(
+      '{"nodeId":"misc","fromParentId":null,"toParentId":"p","index":0}',
+    );
+    expect((await order(page)).slice(0, 3)).toEqual(["p", "misc", "A"]);
+  });
+
   test("LargeTree: moving the pointer sideways keeps the indicator in sync", async ({ page }) => {
     await page.goto(story("large-tree"));
     await expect(page.getByRole("treeitem").first()).toBeVisible();

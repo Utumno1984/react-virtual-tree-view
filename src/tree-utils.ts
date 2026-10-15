@@ -182,8 +182,9 @@ export interface DropTarget {
  * descendants of the dragged node) with the pointer `dragOffset` px to the right of where
  * the drag started. The vertical position picks the slot between rows, the horizontal one
  * the depth (see `getProjection`), so a drop can reorder, nest under the previous row or
- * move up a level. Hovering a row deeper than the dragged node counts as hovering its
- * ancestor at the dragged node's depth. Returns `null` for unknown ids / out-of-range rows.
+ * move up a level. The row under the pointer is the insertion point (before it when moving
+ * up, after it and its visible subtree when moving down), whatever its parent: a node can
+ * land between the children of another open parent. Returns `null` for unknown ids / out-of-range rows.
  */
 export function getDropTarget<T>(
   flattened: readonly FlattenedNode<T>[],
@@ -197,21 +198,17 @@ export function getDropTarget<T>(
   const active = flattened[activeIndex];
   if (!active || overIndex < 0 || overIndex >= flattened.length) return null;
 
-  // `slot`: index in `flattened` before which the node is inserted.
+  // `slot`: index in `flattened` before which the node is inserted. The row under the
+  // pointer is the insertion point: before it when moving up, after it (and after its own
+  // visible subtree) when moving down. Rows of other parents are valid slots too; the depth
+  // is then limited by the neighbours (`projectAtSlot`).
   let slot = activeIndex;
-  if (overIndex !== activeIndex) {
-    let anchor = overIndex;
-    while (anchor >= 0 && flattened[anchor]!.depth > active.depth) anchor--;
-    if (anchor < 0) return null;
-    const anchorNode = flattened[anchor]!;
-    if (anchor < activeIndex) {
-      slot = anchor;
-    } else if (anchorNode.depth < active.depth) {
-      slot = anchor + 1;
-    } else {
-      slot = anchor + 1;
-      while (slot < flattened.length && flattened[slot]!.depth > anchorNode.depth) slot++;
-    }
+  if (overIndex < activeIndex) {
+    slot = overIndex;
+  } else if (overIndex > activeIndex) {
+    const overDepth = flattened[overIndex]!.depth;
+    slot = overIndex + 1;
+    while (slot < flattened.length && flattened[slot]!.depth > overDepth) slot++;
   }
 
   const without = flattened.slice(0, activeIndex).concat(flattened.slice(activeIndex + 1));
@@ -225,7 +222,11 @@ export function getDropTarget<T>(
     // Nested under the previous row. If that row is collapsed its children are hidden
     // and the node goes after all of them.
     const following = moved[insertAt + 1];
-    if (following?.parentId !== previous.id) index = previous.node.children?.length ?? 0;
+    if (following?.parentId !== previous.id) {
+      index = previous.node.children?.length ?? 0;
+      // The dragged node is still counted among its own parent's children.
+      if (previous.id === active.parentId) index = Math.max(0, index - 1);
+    }
   } else {
     for (let i = 0; i < insertAt; i++) {
       const item = moved[i]!;

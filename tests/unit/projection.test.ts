@@ -150,6 +150,72 @@ describe("getDropTarget", () => {
     expect(r).toMatchObject({ parentId: "p", index: 2 });
   });
 
+  it("two drags over the same row give different targets for different dragged nodes", () => {
+    // tree: C1 is C's only child; drag C1 over B, then B over B (same row and steps)
+    const t: TreeNode[] = [n("p", [n("A"), n("B"), n("C", [n("C1")])])];
+    const first = target(t, ["p", "C"], "C1", "B", 0)!;
+    const second = target(t, ["p", "C"], "B", "B", 0)!;
+    expect(first.isNoop).toBe(false);
+    expect(first.parentId).toBe("A"); // before B at C1's depth: last child of A
+    expect(second.isNoop).toBe(true);
+  });
+
+  it("an only child dropped in place is a no-op (dx 0)", () => {
+    const t: TreeNode[] = [n("p", [n("A"), n("C", [n("C1")]), n("D")])];
+    const r = target(t, ["p", "C"], "C1", "C1", 0)!;
+    expect(r).toMatchObject({ parentId: "C", index: 0, isNoop: true });
+    // last child of several: also a no-op
+    const t2: TreeNode[] = [n("p", [n("C", [n("c1"), n("c2")]), n("D")])];
+    expect(target(t2, ["p", "C"], "c2", "c2", 0)!.isNoop).toBe(true);
+    expect(target(t2, ["p", "C"], "c1", "c1", 0)!.isNoop).toBe(true);
+  });
+
+  // r
+  //   p
+  //     A
+  //   docs
+  //     cv
+  //     notes
+  //   misc
+  const docsTree = (): TreeNode[] => [
+    n("p", [n("A")]),
+    n("docs", [n("cv"), n("notes")]),
+    n("misc"),
+  ];
+  const docsOpen = ["p", "docs"];
+
+  it("a root dragged up over a child lands between that parent's children", () => {
+    const r = target(docsTree(), docsOpen, "misc", "notes", 0)!;
+    expect(r).toMatchObject({ parentId: "docs", index: 1, isNoop: false });
+    expect(r.projection.depth).toBe(1);
+  });
+
+  it("a root dragged up over the first child of an open node becomes its first child", () => {
+    const r = target(docsTree(), docsOpen, "misc", "cv", 0)!;
+    expect(r).toMatchObject({ parentId: "docs", index: 0 });
+    // over A, first child of p: the same, whatever the horizontal offset
+    for (const dx of [0, IND, -IND * 3]) {
+      expect(target(docsTree(), docsOpen, "misc", "A", dx)!).toMatchObject({ parentId: "p", index: 0 });
+    }
+  });
+
+  it("a root dragged down over a child lands after it, inside its parent", () => {
+    const t: TreeNode[] = [n("first"), n("docs", [n("cv"), n("notes")]), n("misc")];
+    const r = target(t, ["docs"], "first", "cv", 0)!;
+    expect(r).toMatchObject({ parentId: "docs", index: 1 });
+  });
+
+  it("the depth is still limited by the neighbours", () => {
+    // between cv and notes (both depth 1) a root cannot go back to depth 0 ...
+    const left = target(docsTree(), docsOpen, "misc", "notes", -IND * 4)!;
+    expect(left).toMatchObject({ parentId: "docs", index: 1 });
+    expect(left.projection.depth).toBe(1);
+    // ... nor deeper than cv + 1 (nested under cv)
+    const right = target(docsTree(), docsOpen, "misc", "notes", IND * 4)!;
+    expect(right).toMatchObject({ parentId: "cv", index: 0 });
+    expect(right.projection.depth).toBe(2);
+  });
+
   it("returns null for unknown ids and out-of-range rows", () => {
     const flat = flattenTree(tree(), new Set(open));
     expect(getDropTarget(flat, "nope", 0, 0, IND)).toBeNull();
@@ -166,30 +232,39 @@ describe("getDropTarget", () => {
 
 describe("projection cache", () => {
   it("does not recompute while the row and the indentation steps stay the same", () => {
-    const cache = createProjectionCache<number>();
+    const cache = createProjectionCache<number, string>();
     const compute = vi.fn(() => Math.random());
-    const first = cache.get(3, 1, compute);
+    const first = cache.get("X", 3, 1, compute);
     // pointer wiggles by a few pixels: same row, same derived depth
-    expect(cache.get(3, 1, compute)).toBe(first);
-    expect(cache.get(3, 1, compute)).toBe(first);
+    expect(cache.get("X", 3, 1, compute)).toBe(first);
+    expect(cache.get("X", 3, 1, compute)).toBe(first);
     expect(compute).toHaveBeenCalledTimes(1);
   });
 
   it("recomputes when the row or the steps change", () => {
-    const cache = createProjectionCache<string>();
+    const cache = createProjectionCache<string, string>();
     const compute = vi.fn(() => "x");
-    cache.get(3, 1, compute);
-    cache.get(4, 1, compute);
-    cache.get(4, 2, compute);
-    cache.get(4, 2, compute);
+    cache.get("X", 3, 1, compute);
+    cache.get("X", 4, 1, compute);
+    cache.get("X", 4, 2, compute);
+    cache.get("X", 4, 2, compute);
     expect(compute).toHaveBeenCalledTimes(3);
   });
 
   it("caches a null result too", () => {
-    const cache = createProjectionCache<null>();
+    const cache = createProjectionCache<null, string>();
     const compute = vi.fn(() => null);
-    cache.get(0, 0, compute);
-    cache.get(0, 0, compute);
+    cache.get("X", 0, 0, compute);
+    cache.get("X", 0, 0, compute);
     expect(compute).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not share a result between two drags of different nodes (same row, same steps)", () => {
+    const cache = createProjectionCache<string, string>();
+    expect(cache.get("C1", 2, 0, () => "result for C1")).toBe("result for C1");
+    // a later drag of another node over the same row and steps must be computed afresh
+    expect(cache.get("B", 2, 0, () => "result for B")).toBe("result for B");
+    // and coming back to the first node does not resurrect the stale entry either
+    expect(cache.get("C1", 2, 0, () => "fresh C1")).toBe("fresh C1");
   });
 });

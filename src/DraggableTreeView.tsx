@@ -58,8 +58,13 @@ function DraggableTreeViewInner<T = unknown>(
     setActiveId(active.id);
   }, []);
 
+  const { data } = props;
+  // moveNode addresses nodes by id: with duplicates a move could drop sibling nodes, so no
+  // move is reported and no indicator is shown (it would promise a drop that never happens).
+  const hasDuplicateIds = useMemo(() => findDuplicateIds(data).length > 0, [data]);
+
   useEffect(() => {
-    if (activeId === null) return;
+    if (activeId === null || hasDuplicateIds) return;
     // The resolver memoizes by (row under the pointer, indentation steps): while those do
     // not change it returns the same object and the store is not touched.
     let last: DropTarget | null | undefined;
@@ -80,11 +85,8 @@ function DraggableTreeViewInner<T = unknown>(
       document.removeEventListener("pointermove", onMove);
       previewStore.set(null);
     };
-  }, [activeId, previewStore]);
+  }, [activeId, previewStore, hasDuplicateIds]);
 
-  const { data } = props;
-  // moveNode addresses nodes by id: with duplicates a move could drop sibling nodes.
-  const hasDuplicateIds = useMemo(() => findDuplicateIds(data).length > 0, [data]);
   const onDragEnd = useCallback(
     ({ active }: DragEndEvent) => {
       setActiveId(null);
@@ -145,7 +147,13 @@ ForwardedDraggableTreeView.displayName = "DraggableTreeView";
  * started picks the depth (one `indentation` per level, limited to what the neighbours
  * allow): right nests under the previous row, left moves up a level. A live indicator shows
  * the projection. The dragged node's descendants are hidden meanwhile and travel with it.
- * Dropping on a collapsed parent expands it. Trees with duplicate ids never report a move.
+ * Dropping on a collapsed parent expands it. Trees with duplicate ids never report a move
+ * and show no indicator.
+ *
+ * The row under the pointer is the insertion point whatever its parent (before it when
+ * moving up, after it when moving down), so dropping on a row of a different parent moves the
+ * node there (unlike a plain same-parent reorder). The target parent is expanded right after
+ * `onTreeChange` is called, even if the consumer ignores the new tree.
  */
 export const DraggableTreeView = ForwardedDraggableTreeView as <T = unknown>(
   props: DraggableTreeViewProps<T> & { ref?: ForwardedRef<TreeViewHandle> },

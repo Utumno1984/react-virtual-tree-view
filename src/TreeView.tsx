@@ -303,7 +303,7 @@ function TreeViewInner<T = unknown>(
   useEffect(() => {
     if (!resolverRef) return;
     // Rebuilt with `rows`, so the cache never outlives the layout it was computed for.
-    const cache = createProjectionCache<DropTarget | null>();
+    const cache = createProjectionCache<DropTarget | null, TreeId>();
     let flat: FlattenedNode<T>[] | null = null;
     resolverRef.current = (x, y, activeId, dx) => {
       const el = containerRef.current;
@@ -319,7 +319,7 @@ function TreeViewInner<T = unknown>(
         Math.max(0, Math.floor((y - top) / rowHeight)),
       );
       const steps = Math.round(dx / indentation);
-      return cache.get(overIndex, steps, () => {
+      return cache.get(activeId, overIndex, steps, () => {
         flat ??= rows.map((row) => row.item);
         return getDropTarget(flat, activeId, overIndex, dx, indentation);
       });
