@@ -20,7 +20,7 @@ const useIsomorphicLayoutEffect = typeof window !== "undefined" ? useLayoutEffec
  * takes the place of one overscan row). With `overscan = 0` an unaligned scroll
  * needs one extra row to avoid an uncovered strip.
  * A viewport of 0 (not measured yet, e.g. no layout) renders every row; `useVirtualRows`
- * avoids that case when a `ResizeObserver` is available.
+ * avoids that case until mounted, and afterwards whenever a `ResizeObserver` is available.
  */
 export function computeRange(
   scrollTop: number,
@@ -59,12 +59,16 @@ function sameRange(a: VirtualRange, b: VirtualRange): boolean {
 export function useVirtualRows({ count, rowHeight, overscan, height, containerRef }: Options) {
   const [scrollTop, setScrollTop] = useState(0);
   const [measured, setMeasured] = useState(0);
+  // Set after mount (never during render, to keep server and client markup identical)
+  // when there is no ResizeObserver to wait for.
+  const [cannotObserve, setCannotObserve] = useState(false);
   const viewport = height ?? measured;
 
   const compute = (top: number, view: number): VirtualRange => {
-    // Not measured yet: with a ResizeObserver a measurement is on its way, so render a
-    // small window instead of every row (10,000 nodes must never be mounted at once).
-    if (!(view > 0) && typeof ResizeObserver !== "undefined") {
+    // Not measured yet: render a small window instead of every row (10,000 nodes must
+    // never be mounted at once). Only without a ResizeObserver, once mounted, fall back
+    // to every row.
+    if (!(view > 0) && !cannotObserve) {
       const minimal = Math.max(1, 2 * Math.max(0, Math.floor(overscan)));
       return { start: 0, end: Math.min(count, minimal) };
     }
@@ -81,7 +85,10 @@ export function useVirtualRows({ count, rowHeight, overscan, height, containerRe
     const el = containerRef.current;
     if (!el) return;
     setMeasured(el.clientHeight);
-    if (typeof ResizeObserver === "undefined") return;
+    if (typeof ResizeObserver === "undefined") {
+      setCannotObserve(true);
+      return;
+    }
     const observer = new ResizeObserver(() => setMeasured(el.clientHeight));
     observer.observe(el);
     return () => observer.disconnect();
