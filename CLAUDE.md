@@ -85,8 +85,9 @@ pipeline completa: chiedi a Daniele/all'orchestratore se in dubbio.
 
 ## Convenzioni tecniche
 
-- Stack: React 18+, TypeScript, Tailwind CSS (solo demo/Storybook), `@dnd-kit/core` +
-  `@dnd-kit/sortable` come peer/dev dependency, build con `tsup`.
+- Stack: React 18+, TypeScript, Tailwind CSS (solo demo/Storybook), `@dnd-kit/core` come
+  peer dependency (basta: niente `@dnd-kit/sortable`, il drop target si deriva dalla
+  matematica del puntatore come nel progetto gemello), build con `tsup`.
 - Codice, nomi e commenti in inglese; la demo/Storybook può avere testi in italiano o inglese
   (decidi in base a dove la mostri — Daniele la usa anche per il portfolio in inglese).
 - Struttura: `src/` (libreria pubblicata), `src/tree-utils.ts` (helper puri e testabili:
