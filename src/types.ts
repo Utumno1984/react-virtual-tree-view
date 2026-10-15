@@ -18,6 +18,12 @@ export interface RenderNodeState {
   isSelected: boolean;
   /** The tree has focus and this is its focused row. */
   isFocused: boolean;
+  /** A non-empty `searchQuery` is active (the drag is meant to be disabled meanwhile). */
+  isSearching: boolean;
+  /** Searching, and this node's `label` contains the query. */
+  isMatch: boolean;
+  /** `[start, end)` offsets of every occurrence of the query in `label`; `[]` unless `isMatch`. */
+  matchRanges: Array<[number, number]>;
 }
 
 export interface TreeViewProps<T = unknown> {
@@ -45,6 +51,16 @@ export interface TreeViewProps<T = unknown> {
   rowClassName?: string | ((state: RenderNodeState) => string);
   /** Rendered next to (not inside) the `role="tree"` container when `data` is empty. */
   emptyState?: React.ReactNode;
+  /**
+   * Case-insensitive substring filter on `label` (surrounding whitespace ignored, no regex).
+   * Only matches and their ancestors are shown, ancestors expanded, and the matched text is
+   * wrapped in `<mark>` (unless `renderNode` is used). Clearing it restores the previous
+   * expansion exactly. Expanding/collapsing while searching is temporary and does not call
+   * `onExpandedChange`.
+   */
+  searchQuery?: string;
+  /** Rendered next to the tree when `searchQuery` is active and nothing matches. */
+  noResults?: React.ReactNode;
   /** Height in px of every row (fixed, must be > 0; invalid values fall back to 32). Default 32. */
   rowHeight?: number;
   /**
