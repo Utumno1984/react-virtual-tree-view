@@ -8,8 +8,7 @@ import {
   useState,
 } from "react";
 import type { ForwardedRef, ReactElement, ReactNode } from "react";
-import { collectMatches, getMatchRanges } from "./search";
-import type { SearchResult } from "./search";
+import { collectMatches, getMatchRanges, normalizeQuery } from "./search";
 import { findDuplicateIds, flattenTree } from "./tree-utils";
 import type { TreeId } from "./tree-utils";
 import type { RenderNodeState, TreeViewHandle, TreeViewProps } from "./types";
@@ -37,8 +36,10 @@ function highlight(label: string, ranges: Array<[number, number]>): ReactNode {
   const parts: ReactNode[] = [];
   let last = 0;
   ranges.forEach(([start, end], i) => {
-    if (start > last) parts.push(label.slice(last, start));
-    parts.push(<mark key={i}>{label.slice(start, end)}</mark>);
+    const from = Math.max(start, last);
+    if (end <= from) return;
+    if (from > last) parts.push(label.slice(last, from));
+    parts.push(<mark key={i}>{label.slice(from, end)}</mark>);
     last = end;
   });
   if (last < label.length) parts.push(label.slice(last));
@@ -83,20 +84,28 @@ function TreeViewInner<T = unknown>(
   // `selectedId={undefined}` means uncontrolled; `null` is a controlled "nothing selected".
   const currentSelectedId = selectedId !== undefined ? selectedId : uncontrolledSelectedId;
 
-  // One O(n) pass per (data, query): matches, their ancestors and the ids to expand.
-  const search = useMemo(() => collectMatches(data, searchQuery), [data, searchQuery]);
-  // While searching, the user's own expand/collapse lives in `searchExpanded` (tied to the
-  // current `search` result, so it is dropped when the query or data change) and `expanded`
-  // is left untouched: clearing the query restores it exactly.
-  const [searchOverride, setSearchOverride] = useState<{
-    for: SearchResult<T>;
-    ids: ReadonlySet<TreeId>;
+  // One O(n) pass per (data, normalized query): matches, their ancestors and the ids to
+  // expand. Keyed on the trimmed query so "foo" -> "foo " does not redo the pass.
+  const normalizedQuery = normalizeQuery(searchQuery);
+  const search = useMemo(() => collectMatches(data, normalizedQuery), [data, normalizedQuery]);
+  // While searching, the user's own expand/collapse is stored as the set of ids they toggled
+  // (relative to the auto-expanded ones), tied to the normalized query: it survives a new
+  // `data` reference, is dropped when the query really changes, and `expanded` is left
+  // untouched, so clearing the query restores it exactly.
+  const [searchToggles, setSearchToggles] = useState<{
+    query: string;
+    toggled: ReadonlySet<TreeId>;
   } | null>(null);
-  const effectiveExpanded: ReadonlySet<TreeId> = search
-    ? searchOverride && searchOverride.for === search
-      ? searchOverride.ids
-      : search.expandedIds
-    : expanded;
+  if (searchToggles && searchToggles.query !== normalizedQuery) setSearchToggles(null);
+  const effectiveExpanded = useMemo<ReadonlySet<TreeId>>(() => {
+    if (!search) return expanded;
+    if (!searchToggles || searchToggles.query !== search.query) return search.expandedIds;
+    const next = new Set(search.expandedIds);
+    for (const id of searchToggles.toggled) {
+      if (!next.delete(id)) next.add(id);
+    }
+    return next;
+  }, [search, searchToggles, expanded]);
 
   const rows = useMemo(() => {
     const flat = flattenTree(data, effectiveExpanded, search?.visible);
@@ -219,12 +228,16 @@ function TreeViewInner<T = unknown>(
 
   const toggle = useCallback(
     (id: TreeId) => {
-      const next = new Set(effectiveExpanded);
-      if (!next.delete(id)) next.add(id);
       if (search) {
-        setSearchOverride({ for: search, ids: next });
+        setSearchToggles((prev) => {
+          const toggled = new Set(prev && prev.query === search.query ? prev.toggled : []);
+          if (!toggled.delete(id)) toggled.add(id);
+          return { query: search.query, toggled };
+        });
         return;
       }
+      const next = new Set(effectiveExpanded);
+      if (!next.delete(id)) next.add(id);
       setExpanded(next);
       onExpandedChange?.([...next]);
     },

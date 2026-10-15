@@ -129,4 +129,18 @@ describe("getMatchRanges", () => {
     expect(ranges.length).toBeGreaterThan(0);
     for (const [s, e] of ranges) expect(label.slice(s, e)).toBe("İ");
   });
+
+  it("never returns overlapping ranges when lowercasing lengthens the label", () => {
+    const ranges = getMatchRanges("İİİ", "̇i");
+    for (let i = 1; i < ranges.length; i++) {
+      expect(ranges[i]![0]).toBeGreaterThanOrEqual(ranges[i - 1]![1]);
+    }
+  });
+
+  it("collectMatches and getMatchRanges agree on what matches (final sigma)", () => {
+    const label = "İ ΟΔΟΣ";
+    const node: TreeNode = { id: 1, label };
+    const result = collectMatches([node], "οδος");
+    expect(result !== null && result.matches.has(node)).toBe(getMatchRanges(label, "οδος").length > 0);
+  });
 });

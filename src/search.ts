@@ -29,14 +29,14 @@ export function collectMatches<T>(
 ): SearchResult<T> | null {
   const q = normalizeQuery(query);
   if (q === "") return null;
-  const needle = q.toLowerCase();
   const matches = new Set<TreeNode<T>>();
   const visible = new Set<TreeNode<T>>();
   const expandedIds = new Set<TreeId>();
 
   // Returns true when the node or any descendant matches.
   const visit = (node: TreeNode<T>): boolean => {
-    let keep = typeof node.label === "string" && node.label.toLowerCase().includes(needle);
+    // Same function as the highlighting, so `isMatch` and `matchRanges` can never disagree.
+    let keep = typeof node.label === "string" && getMatchRanges(node.label, q).length > 0;
     if (keep) matches.add(node);
     let hasVisibleChild = false;
     if (node.children) {
@@ -90,8 +90,13 @@ export function getMatchRanges(label: string, query: string): Array<[number, num
     const at = lowered.indexOf(q, from);
     if (at === -1) break;
     const last = at + q.length;
-    if (spanStart) ranges.push([spanStart[at] ?? 0, spanEnd[last - 1] ?? label.length]);
-    else ranges.push([at, last]);
+    if (spanStart) {
+      // Mapped spans can overlap (one source char lowercases to several chars): clip.
+      const prevEnd = ranges.length > 0 ? ranges[ranges.length - 1]![1] : 0;
+      const rangeStart = Math.max(spanStart[at] ?? 0, prevEnd);
+      const rangeEnd = spanEnd[last - 1] ?? label.length;
+      if (rangeStart < rangeEnd) ranges.push([rangeStart, rangeEnd]);
+    } else ranges.push([at, last]);
     from = last;
   }
   return ranges;

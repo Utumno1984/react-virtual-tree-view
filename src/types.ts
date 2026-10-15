@@ -57,9 +57,16 @@ export interface TreeViewProps<T = unknown> {
    * wrapped in `<mark>` (unless `renderNode` is used). Clearing it restores the previous
    * expansion exactly. Expanding/collapsing while searching is temporary and does not call
    * `onExpandedChange`.
+   *
+   * Memoize `data` (e.g. `useMemo`) so the O(n) search pass does not rerun on every render.
+   * The library does not announce results to screen readers: render the result count or
+   * `noResults` inside your own `aria-live="polite"` region if you need that.
    */
   searchQuery?: string;
-  /** Rendered next to the tree when `searchQuery` is active and nothing matches. */
+  /**
+   * Rendered next to the tree when `searchQuery` is active and nothing matches. Not announced
+   * automatically: wrap it in an `aria-live` region yourself if needed.
+   */
   noResults?: React.ReactNode;
   /** Height in px of every row (fixed, must be > 0; invalid values fall back to 32). Default 32. */
   rowHeight?: number;

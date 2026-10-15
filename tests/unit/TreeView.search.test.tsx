@@ -167,6 +167,29 @@ describe("TreeView searchQuery", () => {
     expect(screen.getAllByRole("treeitem")).toHaveLength(1);
   });
 
+  it("keeps a user collapse when data is a new but equal reference", () => {
+    const { rerender } = render(<TreeView data={structuredClone(tree)} searchQuery="foo" />);
+    fireEvent.click(toggleOf("reports"));
+    expect(rowIds()).toEqual(["docs", "reports", "foo"]);
+    rerender(<TreeView data={structuredClone(tree)} searchQuery="foo" />);
+    expect(rowIds()).toEqual(["docs", "reports", "foo"]);
+  });
+
+  it("keeps a user collapse when only the surrounding spaces of the query change", () => {
+    const { rerender } = render(<TreeView data={tree} searchQuery="foo" />);
+    fireEvent.click(toggleOf("reports"));
+    rerender(<TreeView data={tree} searchQuery="foo " />);
+    expect(rowIds()).toEqual(["docs", "reports", "foo"]);
+  });
+
+  it("resets the user toggles when the query really changes", () => {
+    const { rerender } = render(<TreeView data={tree} searchQuery="foo" />);
+    fireEvent.click(toggleOf("reports"));
+    rerender(<TreeView data={tree} searchQuery="foo n" />);
+    rerender(<TreeView data={tree} searchQuery="foo" />);
+    expect(rowIds()).toEqual(["docs", "reports", "q1", "foo"]);
+  });
+
   it("uses the filtered siblings for aria-setsize and aria-posinset", () => {
     render(<TreeView data={tree} searchQuery="foo" />);
     expect(row("docs")!.getAttribute("aria-setsize")).toBe("2");
