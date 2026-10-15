@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { findDuplicateIds, flattenTree } from "./tree-utils";
 import type { TreeId } from "./tree-utils";
 import type { RenderNodeState, TreeNode, TreeViewProps } from "./types";
@@ -45,9 +45,16 @@ export function TreeView<T = unknown>({
     });
   }, [data, expanded]);
 
+  const warnedDuplicates = useRef("");
+
   useEffect(() => {
     if (!isDevelopment()) return;
     const duplicates = findDuplicateIds(data);
+    // Refs survive StrictMode's simulated unmount/remount, so the same set of
+    // duplicates is reported once, not once per effect run or per new `data` identity.
+    const signature = duplicates.map(String).join("\u0000");
+    if (signature === warnedDuplicates.current) return;
+    warnedDuplicates.current = signature;
     if (duplicates.length > 0) {
       console.warn(
         `[react-virtual-tree-view] Duplicate node ids found: ${duplicates.map(String).join(", ")}. ` +

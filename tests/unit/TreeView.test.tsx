@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TreeView } from "../../src";
 import type { TreeNode } from "../../src";
@@ -209,6 +210,22 @@ describe("duplicate ids", () => {
     expect(warn.mock.calls[0]![0]).toContain("y");
     expect(screen.getAllByRole("treeitem")).toHaveLength(4);
     expect(error).not.toHaveBeenCalled();
+  });
+
+  it("warns exactly once under StrictMode, also across re-renders with a new data instance", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { rerender } = render(
+      <StrictMode>
+        <TreeView data={dup} />
+      </StrictMode>,
+    );
+    expect(warn).toHaveBeenCalledTimes(1);
+    rerender(
+      <StrictMode>
+        <TreeView data={structuredClone(dup)} />
+      </StrictMode>,
+    );
+    expect(warn).toHaveBeenCalledTimes(1);
   });
 
   it("does not warn in production", () => {
