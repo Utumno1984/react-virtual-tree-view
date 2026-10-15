@@ -7,10 +7,17 @@ import {
   useRef,
   useState,
 } from "react";
-import type { ForwardedRef, ReactElement, ReactNode } from "react";
+import type {
+  FocusEvent,
+  ForwardedRef,
+  KeyboardEvent,
+  ReactElement,
+  ReactNode,
+} from "react";
 import { collectMatches, getMatchRanges, normalizeQuery } from "./search";
-import { findDuplicateIds, flattenTree } from "./tree-utils";
-import type { TreeId } from "./tree-utils";
+import { findDuplicateIds, flattenTree, getSiblingDropTarget } from "./tree-utils";
+import type { FlattenedNode, TreeId } from "./tree-utils";
+import type { TreeDndAdapter } from "./dnd-internal";
 import type { RenderNodeState, TreeViewHandle, TreeViewProps } from "./types";
 import { useTreeKeyboard } from "./useTreeKeyboard";
 import type { KeyboardRow } from "./useTreeKeyboard";
@@ -67,7 +74,8 @@ function TreeViewInner<T = unknown>(
   noResults,
   "aria-label": ariaLabel,
   "aria-labelledby": ariaLabelledBy,
-}: TreeViewProps<T>,
+  dnd,
+}: TreeViewProps<T> & { dnd?: TreeDndAdapter },
   ref: ForwardedRef<TreeViewHandle>,
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -107,8 +115,17 @@ function TreeViewInner<T = unknown>(
     return next;
   }, [search, searchToggles, expanded]);
 
+  // While a node is dragged its descendants are hidden: lay out as if it were collapsed.
+  const activeDragId = dnd?.activeId ?? null;
+  const layoutExpanded = useMemo<ReadonlySet<TreeId>>(() => {
+    if (activeDragId === null || !effectiveExpanded.has(activeDragId)) return effectiveExpanded;
+    const next = new Set(effectiveExpanded);
+    next.delete(activeDragId);
+    return next;
+  }, [effectiveExpanded, activeDragId]);
+
   const rows = useMemo(() => {
-    const flat = flattenTree(data, effectiveExpanded, search?.visible);
+    const flat = flattenTree(data, layoutExpanded, search?.visible);
     // aria-setsize / aria-posinset in one pass: `counters[d]` is the number of siblings
     // seen at depth d of the current path; the sizes are filled once the pass is over.
     const counters: number[] = [];
@@ -136,12 +153,12 @@ function TreeViewInner<T = unknown>(
         setSize,
         posInSet: counters[depth],
         parentIndex,
-        isExpanded: item.hasChildren && effectiveExpanded.has(item.id),
+        isExpanded: item.hasChildren && layoutExpanded.has(item.id),
       };
     });
     for (const row of built) row.setSize = childCounts.get(row.parentIndex) ?? 1;
     return built;
-  }, [data, effectiveExpanded, search]);
+  }, [data, layoutExpanded, search]);
 
   // First visible row of each id: with duplicate ids the first occurrence wins.
   const firstIndexById = useMemo(() => {
@@ -272,6 +289,111 @@ function TreeViewInner<T = unknown>(
   const renderedIndexes: number[] = [];
   for (let i = start; i < end; i++) renderedIndexes.push(i);
   if (keepTarget && !focusedInWindow) renderedIndexes.push(focusedIndex);
+  // The dragged row stays mounted when scrolled out of the window: unmounting it would
+  // unregister the draggable in the middle of the drag.
+  const activeIndex = activeDragId === null ? -1 : (firstIndexById.get(activeDragId) ?? -1);
+  if (activeIndex >= 0 && !renderedIndexes.includes(activeIndex)) renderedIndexes.push(activeIndex);
+
+  // Drop resolution happens once, on release (not on every pointermove): pointer position
+  // -> row under it (fixed row height) -> same-parent target.
+  const resolverRef = dnd?.resolverRef;
+  useEffect(() => {
+    if (!resolverRef) return;
+    resolverRef.current = (x, y, activeId) => {
+      const el = containerRef.current;
+      if (search || !el || rows.length === 0) return null;
+      const rect = el.getBoundingClientRect();
+      if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) return null;
+      const overIndex = Math.min(
+        rows.length - 1,
+        Math.max(0, Math.floor((y - rect.top + el.scrollTop) / rowHeight)),
+      );
+      const flat: FlattenedNode<T>[] = rows.map((row) => row.item);
+      return getSiblingDropTarget(flat, activeId, overIndex);
+    };
+    return () => {
+      resolverRef.current = null;
+    };
+  }, [resolverRef, rows, rowHeight, search]);
+
+  const renderBody = (index: number, state: RenderNodeState, interactive: boolean) => {
+    const { item } = rows[index]!;
+    const { node, hasChildren } = item;
+    return (
+      <>
+        <span
+          data-toggle=""
+          aria-hidden="true"
+          onClick={
+            interactive && hasChildren
+              ? (event) => {
+                  // Expanding must not also select the row.
+                  event.stopPropagation();
+                  toggle(node.id);
+                }
+              : undefined
+          }
+          style={{
+            display: "inline-block",
+            minWidth: "1em",
+            cursor: hasChildren ? "pointer" : undefined,
+          }}
+        >
+          {hasChildren
+            ? renderIcon
+              ? renderIcon(state)
+              : state.isExpanded
+                ? "▾"
+                : "▸"
+            : null}
+        </span>
+        {renderNode ? renderNode(node, state) : highlight(node.label, state.matchRanges)}
+      </>
+    );
+  };
+
+  const buildState = (index: number): RenderNodeState => {
+    const { item, isExpanded } = rows[index]!;
+    const { node, depth, hasChildren } = item;
+    const isMatch = !!search && search.matches.has(node);
+    return {
+      depth,
+      isExpanded,
+      isDisabled: !!node.isDisabled,
+      hasChildren,
+      isSelected: index === selectedIndex,
+      isFocused: hasFocus && index === focusedIndex,
+      isSearching: !!search,
+      isMatch,
+      matchRanges: isMatch && search ? getMatchRanges(node.label, search.query) : [],
+    };
+  };
+  const classFor = (state: RenderNodeState) =>
+    typeof rowClassName === "function" ? rowClassName(state) : rowClassName;
+
+  // The overlay repeats the dragged row's content; it is decorative (the row itself stays
+  // in the tree), so it is hidden from assistive tech and carries no treeitem role.
+  const overlay =
+    dnd && activeIndex >= 0
+      ? (() => {
+          const state = buildState(activeIndex);
+          return (
+            <div
+              aria-hidden="true"
+              data-drag-overlay=""
+              className={classFor(state)}
+              style={{
+                height: rowHeight,
+                boxSizing: "border-box",
+                paddingLeft: state.depth * indentation,
+                pointerEvents: "none",
+              }}
+            >
+              {renderBody(activeIndex, state, false)}
+            </div>
+          );
+        })()
+      : null;
 
   // Ids in `expandedIds` that no longer exist in `data` are ignored but kept in the set.
   return (
@@ -295,86 +417,59 @@ function TreeViewInner<T = unknown>(
       >
         <div role="none" style={{ position: "relative", height: totalHeight }}>
         {renderedIndexes.map((index) => {
-          const { item, key, setSize, posInSet, isExpanded } = rows[index]!;
+          const { item, key, setSize, posInSet } = rows[index]!;
           const { node, depth, hasChildren } = item;
-          const isDisabled = !!node.isDisabled;
-          const isMatch = !!search && search.matches.has(node);
-          const matchRanges = isMatch && search ? getMatchRanges(node.label, search.query) : [];
-          const state: RenderNodeState = {
-            depth,
-            isExpanded,
-            isDisabled,
-            hasChildren,
-            isSelected: index === selectedIndex,
-            isFocused: hasFocus && index === focusedIndex,
-            isSearching: !!search,
-            isMatch,
-            matchRanges,
+          const state = buildState(index);
+          const rowProps = {
+            role: "treeitem",
+            className: classFor(state),
+            "data-node-id": String(node.id),
+            "data-row-index": index,
+            tabIndex: index === tabbableIndex ? 0 : -1,
+            onKeyDown: (event: KeyboardEvent<HTMLDivElement>) =>
+              keyboard.onRowKeyDown(event, index),
+            onFocus: (event: FocusEvent<HTMLDivElement>) => keyboard.onRowFocus(event, index),
+            onClick: () => select(index),
+            "data-disabled": state.isDisabled ? "" : undefined,
+            "aria-level": depth + 1,
+            "aria-setsize": setSize,
+            "aria-posinset": posInSet,
+            "aria-expanded": hasChildren ? state.isExpanded : undefined,
+            "aria-selected": state.isSelected,
+            "aria-disabled": state.isDisabled ? true : undefined,
+            style: {
+              position: "absolute",
+              top: item.index * rowHeight,
+              left: 0,
+              right: 0,
+              height: rowHeight,
+              boxSizing: "border-box",
+              paddingLeft: depth * indentation,
+            } as const,
           };
-          const rowClass =
-            typeof rowClassName === "function"
-              ? rowClassName(state)
-              : rowClassName;
+          const body = renderBody(index, state, true);
+          if (!dnd) {
+            return (
+              <div key={key} {...rowProps}>
+                {body}
+              </div>
+            );
+          }
           return (
-            <div
+            <dnd.RowShell
               key={key}
-              role="treeitem"
-              className={rowClass}
-              data-node-id={String(node.id)}
-              data-row-index={index}
-              tabIndex={index === tabbableIndex ? 0 : -1}
-              onKeyDown={(event) => keyboard.onRowKeyDown(event, index)}
-              onFocus={(event) => keyboard.onRowFocus(event, index)}
-              onClick={() => select(index)}
-              data-disabled={isDisabled ? "" : undefined}
-              aria-level={depth + 1}
-              aria-setsize={setSize}
-              aria-posinset={posInSet}
-              aria-expanded={hasChildren ? isExpanded : undefined}
-              aria-selected={state.isSelected}
-              aria-disabled={isDisabled ? true : undefined}
-              style={{
-                position: "absolute",
-                top: item.index * rowHeight,
-                left: 0,
-                right: 0,
-                height: rowHeight,
-                boxSizing: "border-box",
-                paddingLeft: depth * indentation,
-              }}
+              nodeId={node.id}
+              dragDisabled={state.isDisabled || !!search}
+              {...rowProps}
             >
-              <span
-                data-toggle=""
-                aria-hidden="true"
-                onClick={
-                  hasChildren
-                    ? (event) => {
-                        // Expanding must not also select the row.
-                        event.stopPropagation();
-                        toggle(node.id);
-                      }
-                    : undefined
-                }
-                style={{
-                  display: "inline-block",
-                  minWidth: "1em",
-                  cursor: hasChildren ? "pointer" : undefined,
-                }}
-              >
-                {hasChildren
-                  ? renderIcon
-                    ? renderIcon(state)
-                    : isExpanded
-                      ? "▾"
-                      : "▸"
-                  : null}
-              </span>
-              {renderNode ? renderNode(node, state) : highlight(node.label, matchRanges)}
-            </div>
+              {body}
+            </dnd.RowShell>
           );
         })}
         </div>
       </div>
+      {/* Always mounted (even with no content) so DragOverlay can run its drop animation. */}
+      {dnd?.renderOverlay(overlay)}
       {rows.length === 0 && (search ? noResults : emptyState)}
     </>
   );
@@ -382,6 +477,11 @@ function TreeViewInner<T = unknown>(
 
 const ForwardedTreeView = forwardRef(TreeViewInner);
 ForwardedTreeView.displayName = "TreeView";
+
+/** Internal: `TreeView` plus the `dnd` seam used by `DraggableTreeView`. Not exported publicly. */
+export const TreeViewWithDnd = ForwardedTreeView as <T = unknown>(
+  props: TreeViewProps<T> & { dnd?: TreeDndAdapter } & { ref?: ForwardedRef<TreeViewHandle> },
+) => ReactElement | null;
 
 export const TreeView = ForwardedTreeView as <T = unknown>(
   props: TreeViewProps<T> & { ref?: ForwardedRef<TreeViewHandle> },

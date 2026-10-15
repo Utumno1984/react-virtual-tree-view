@@ -1,5 +1,13 @@
-export type { TreeNode, TreeViewProps, RenderNodeState, TreeViewHandle } from "./types";
+export type {
+  TreeNode,
+  TreeViewProps,
+  RenderNodeState,
+  TreeViewHandle,
+  TreeChangeEvent,
+  DraggableTreeViewProps,
+} from "./types";
 export { TreeView } from "./TreeView";
+export { DraggableTreeView } from "./DraggableTreeView";
 export {
   flattenTree,
   getProjection,
@@ -8,5 +16,12 @@ export {
   getSubtreeHeight,
   findDuplicateIds,
   getAncestorIds,
+  getSiblingDropTarget,
 } from "./tree-utils";
-export type { FlattenedNode, Projection, MoveResult, TreeId } from "./tree-utils";
+export type {
+  FlattenedNode,
+  Projection,
+  MoveResult,
+  TreeId,
+  SiblingDropTarget,
+} from "./tree-utils";
