@@ -12,7 +12,7 @@ import { collectMatches, getMatchRanges } from "./search";
 import type { SearchResult } from "./search";
 import { findDuplicateIds, flattenTree } from "./tree-utils";
 import type { TreeId } from "./tree-utils";
-import type { RenderNodeState, TreeNode, TreeViewHandle, TreeViewProps } from "./types";
+import type { RenderNodeState, TreeViewHandle, TreeViewProps } from "./types";
 import { useTreeKeyboard } from "./useTreeKeyboard";
 import type { KeyboardRow } from "./useTreeKeyboard";
 import { useVirtualRows } from "./useVirtualRows";

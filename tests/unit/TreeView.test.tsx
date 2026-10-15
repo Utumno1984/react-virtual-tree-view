@@ -119,6 +119,9 @@ describe("rendering customisation", () => {
       hasChildren: true,
       isSelected: false,
       isFocused: false,
+      isSearching: false,
+      isMatch: false,
+      matchRanges: [],
     });
     expect(renderNode).toHaveBeenCalledWith(expect.objectContaining({ id: "c" }), {
       depth: 0,
@@ -127,6 +130,9 @@ describe("rendering customisation", () => {
       hasChildren: true,
       isSelected: false,
       isFocused: false,
+      isSearching: false,
+      isMatch: false,
+      matchRanges: [],
     });
     expect(renderNode).toHaveBeenCalledWith(expect.objectContaining({ id: "a2" }), {
       depth: 1,
@@ -135,6 +141,9 @@ describe("rendering customisation", () => {
       hasChildren: false,
       isSelected: false,
       isFocused: false,
+      isSearching: false,
+      isMatch: false,
+      matchRanges: [],
     });
   });
 
