@@ -11,6 +11,8 @@ import type { ForwardedRef, ReactElement } from "react";
 import { findDuplicateIds, flattenTree } from "./tree-utils";
 import type { TreeId } from "./tree-utils";
 import type { RenderNodeState, TreeNode, TreeViewHandle, TreeViewProps } from "./types";
+import { useTreeKeyboard } from "./useTreeKeyboard";
+import type { KeyboardRow } from "./useTreeKeyboard";
 import { useVirtualRows } from "./useVirtualRows";
 
 const DEFAULT_INDENTATION = 24;
@@ -32,6 +34,9 @@ function TreeViewInner<T = unknown>(
   data,
   defaultExpandedIds,
   onExpandedChange,
+  selectedId,
+  defaultSelectedId,
+  onSelect,
   indentation = DEFAULT_INDENTATION,
   rowHeight: rowHeightProp = DEFAULT_ROW_HEIGHT,
   height,
@@ -54,12 +59,19 @@ function TreeViewInner<T = unknown>(
     () => new Set(defaultExpandedIds),
   );
 
+  const [uncontrolledSelectedId, setUncontrolledSelectedId] = useState<TreeId | undefined>(
+    defaultSelectedId,
+  );
+  // `selectedId={undefined}` means uncontrolled; `null` is a controlled "nothing selected".
+  const currentSelectedId = selectedId !== undefined ? selectedId : uncontrolledSelectedId;
+
   const rows = useMemo(() => {
     const flat = flattenTree(data, expanded);
     // aria-setsize / aria-posinset in one pass: `parents[d]` is the node at
     // depth d of the current path, `counters[d]` the siblings seen at depth d.
     const parents: TreeNode<T>[] = [];
     const counters: number[] = [];
+    const parentIndexes: number[] = [];
     const seen = new Set<TreeId>();
     return flat.map((item) => {
       const { depth } = item;
@@ -67,6 +79,9 @@ function TreeViewInner<T = unknown>(
       counters[depth] = (counters[depth] ?? 0) + 1;
       parents.length = depth;
       parents[depth] = item.node;
+      parentIndexes.length = depth + 1;
+      const parentIndex = depth === 0 ? -1 : (parentIndexes[depth - 1] ?? -1);
+      parentIndexes[depth] = item.index;
       const setSize =
         depth === 0 ? data.length : (parents[depth - 1]?.children?.length ?? 1);
       // Keys are prefixed by id type (so 1 and "1" differ); rows with a repeated id
@@ -75,9 +90,40 @@ function TreeViewInner<T = unknown>(
         ? `d:${item.index}`
         : `${typeof item.id === "number" ? "n" : "s"}:${String(item.id)}`;
       seen.add(item.id);
-      return { item, key, setSize, posInSet: counters[depth] };
+      return {
+        item,
+        key,
+        setSize,
+        posInSet: counters[depth],
+        parentIndex,
+        isExpanded: item.hasChildren && expanded.has(item.id),
+      };
     });
   }, [data, expanded]);
+
+  // First visible row of each id: with duplicate ids the first occurrence wins.
+  const firstIndexById = useMemo(() => {
+    const map = new Map<TreeId, number>();
+    rows.forEach((row, index) => {
+      if (!map.has(row.item.id)) map.set(row.item.id, index);
+    });
+    return map;
+  }, [rows]);
+  const selectedIndex =
+    currentSelectedId === undefined || currentSelectedId === null
+      ? -1
+      : (firstIndexById.get(currentSelectedId) ?? -1);
+  const keyboardRows = useMemo<KeyboardRow[]>(
+    () =>
+      rows.map((row) => ({
+        id: row.item.id,
+        isDisabled: !!row.item.node.isDisabled,
+        hasChildren: row.item.hasChildren,
+        isExpanded: row.isExpanded,
+        parentIndex: row.parentIndex,
+      })),
+    [rows],
+  );
 
   const { start, end, viewport, totalHeight, onScroll, scrollToIndex } = useVirtualRows({
     count: rows.length,
@@ -148,9 +194,34 @@ function TreeViewInner<T = unknown>(
     [expanded, onExpandedChange],
   );
 
-  // Note: the toggle is aria-hidden and click-only on purpose; keyboard and AT
-  // expansion arrive with the keyboard-navigation ticket. Ids in `expandedIds`
-  // that no longer exist in `data` are ignored but kept in the set.
+  const select = (index: number) => {
+    const row = rows[index];
+    if (!row || row.item.node.isDisabled) return;
+    if (selectedId === undefined) setUncontrolledSelectedId(row.item.id);
+    onSelect?.(row.item.id, row.item.node);
+  };
+
+  const keyboard = useTreeKeyboard({
+    rows: keyboardRows,
+    firstIndexById,
+    selectedIndex,
+    containerRef,
+    scrollToIndex,
+    toggle,
+    select,
+  });
+
+  // The roving tabindex row must exist in the DOM, or Tab could not enter the tree. While
+  // the tree has focus it stays mounted even if scrolled out of the window; otherwise,
+  // if it is out of the window, the first rendered row takes the tabindex instead.
+  const { focusedIndex, hasFocus } = keyboard;
+  const focusedInWindow = focusedIndex >= start && focusedIndex < end;
+  const tabbableIndex = focusedInWindow || hasFocus ? focusedIndex : start;
+  const renderedIndexes: number[] = [];
+  for (let i = start; i < end; i++) renderedIndexes.push(i);
+  if (hasFocus && focusedIndex >= 0 && !focusedInWindow) renderedIndexes.push(focusedIndex);
+
+  // Ids in `expandedIds` that no longer exist in `data` are ignored but kept in the set.
   return (
     <>
       <div
@@ -160,6 +231,8 @@ function TreeViewInner<T = unknown>(
         aria-label={ariaLabel}
         aria-labelledby={ariaLabelledBy}
         onScroll={onScroll}
+        onFocus={keyboard.onTreeFocus}
+        onBlur={keyboard.onTreeBlur}
         // `height` is set only when the prop is given, so the consumer's CSS can size the
         // tree; an empty tree gets no height/overflow so `emptyState` sits right below it.
         style={
@@ -169,15 +242,17 @@ function TreeViewInner<T = unknown>(
         }
       >
         <div role="none" style={{ position: "relative", height: totalHeight }}>
-        {rows.slice(start, end).map(({ item, key, setSize, posInSet }) => {
+        {renderedIndexes.map((index) => {
+          const { item, key, setSize, posInSet, isExpanded } = rows[index]!;
           const { node, depth, hasChildren } = item;
-          const isExpanded = hasChildren && expanded.has(node.id);
           const isDisabled = !!node.isDisabled;
           const state: RenderNodeState = {
             depth,
             isExpanded,
             isDisabled,
             hasChildren,
+            isSelected: index === selectedIndex,
+            isFocused: hasFocus && index === focusedIndex,
           };
           const rowClass =
             typeof rowClassName === "function"
@@ -189,11 +264,17 @@ function TreeViewInner<T = unknown>(
               role="treeitem"
               className={rowClass}
               data-node-id={String(node.id)}
+              data-row-index={index}
+              tabIndex={index === tabbableIndex ? 0 : -1}
+              onKeyDown={(event) => keyboard.onRowKeyDown(event, index)}
+              onFocus={(event) => keyboard.onRowFocus(event, index)}
+              onClick={() => select(index)}
               data-disabled={isDisabled ? "" : undefined}
               aria-level={depth + 1}
               aria-setsize={setSize}
               aria-posinset={posInSet}
               aria-expanded={hasChildren ? isExpanded : undefined}
+              aria-selected={state.isSelected}
               aria-disabled={isDisabled ? true : undefined}
               style={{
                 position: "absolute",
@@ -208,7 +289,15 @@ function TreeViewInner<T = unknown>(
               <span
                 data-toggle=""
                 aria-hidden="true"
-                onClick={hasChildren ? () => toggle(node.id) : undefined}
+                onClick={
+                  hasChildren
+                    ? (event) => {
+                        // Expanding must not also select the row.
+                        event.stopPropagation();
+                        toggle(node.id);
+                      }
+                    : undefined
+                }
                 style={{
                   display: "inline-block",
                   minWidth: "1em",
