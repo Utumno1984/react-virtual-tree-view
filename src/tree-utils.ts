@@ -31,18 +31,25 @@ export interface MoveResult<T = unknown> {
   index: number;
 }
 
-/** Pre-order flattening; only the children of expanded nodes are included. */
+/**
+ * Pre-order flattening; only the children of expanded nodes are included.
+ * With `visible`, nodes outside that set are skipped (search filtering) and
+ * `hasChildren` only counts visible children.
+ */
 export function flattenTree<T = unknown>(
   tree: TreeNode<T>[],
   expandedIds: ReadonlySet<TreeId> | readonly TreeId[],
+  visible?: ReadonlySet<TreeNode<T>>,
 ): FlattenedNode<T>[] {
   const expanded: ReadonlySet<TreeId> =
     expandedIds instanceof Set ? expandedIds : new Set(expandedIds as readonly TreeId[]);
   const out: FlattenedNode<T>[] = [];
   const visit = (nodes: TreeNode<T>[], depth: number, parentId: TreeId | null) => {
     for (const node of nodes) {
+      if (visible && !visible.has(node)) continue;
       const children = node.children;
-      const hasChildren = !!children && children.length > 0;
+      const hasChildren =
+        !!children && (visible ? children.some((c) => visible.has(c)) : children.length > 0);
       out.push({ node, id: node.id, depth, parentId, index: out.length, hasChildren });
       if (hasChildren && expanded.has(node.id)) visit(children, depth + 1, node.id);
     }

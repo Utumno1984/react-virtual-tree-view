@@ -7,10 +7,11 @@ import {
   useRef,
   useState,
 } from "react";
-import type { ForwardedRef, ReactElement } from "react";
+import type { ForwardedRef, ReactElement, ReactNode } from "react";
+import { collectMatches, getMatchRanges, normalizeQuery } from "./search";
 import { findDuplicateIds, flattenTree } from "./tree-utils";
 import type { TreeId } from "./tree-utils";
-import type { RenderNodeState, TreeNode, TreeViewHandle, TreeViewProps } from "./types";
+import type { RenderNodeState, TreeViewHandle, TreeViewProps } from "./types";
 import { useTreeKeyboard } from "./useTreeKeyboard";
 import type { KeyboardRow } from "./useTreeKeyboard";
 import { useVirtualRows } from "./useVirtualRows";
@@ -27,6 +28,22 @@ function isDevelopment(): boolean {
   } catch {
     return false;
   }
+}
+
+/** The label with every range wrapped in `<mark>`; the plain string when there is none. */
+function highlight(label: string, ranges: Array<[number, number]>): ReactNode {
+  if (ranges.length === 0) return label;
+  const parts: ReactNode[] = [];
+  let last = 0;
+  ranges.forEach(([start, end], i) => {
+    const from = Math.max(start, last);
+    if (end <= from) return;
+    if (from > last) parts.push(label.slice(last, from));
+    parts.push(<mark key={i}>{label.slice(from, end)}</mark>);
+    last = end;
+  });
+  if (last < label.length) parts.push(label.slice(last));
+  return parts;
 }
 
 function TreeViewInner<T = unknown>(
@@ -46,6 +63,8 @@ function TreeViewInner<T = unknown>(
   className,
   rowClassName,
   emptyState,
+  searchQuery,
+  noResults,
   "aria-label": ariaLabel,
   "aria-labelledby": ariaLabelledBy,
 }: TreeViewProps<T>,
@@ -65,25 +84,46 @@ function TreeViewInner<T = unknown>(
   // `selectedId={undefined}` means uncontrolled; `null` is a controlled "nothing selected".
   const currentSelectedId = selectedId !== undefined ? selectedId : uncontrolledSelectedId;
 
+  // One O(n) pass per (data, normalized query): matches, their ancestors and the ids to
+  // expand. Keyed on the trimmed query so "foo" -> "foo " does not redo the pass.
+  const normalizedQuery = normalizeQuery(searchQuery);
+  const search = useMemo(() => collectMatches(data, normalizedQuery), [data, normalizedQuery]);
+  // While searching, the user's own expand/collapse is stored as the set of ids they toggled
+  // (relative to the auto-expanded ones), tied to the normalized query: it survives a new
+  // `data` reference, is dropped when the query really changes, and `expanded` is left
+  // untouched, so clearing the query restores it exactly.
+  const [searchToggles, setSearchToggles] = useState<{
+    query: string;
+    toggled: ReadonlySet<TreeId>;
+  } | null>(null);
+  if (searchToggles && searchToggles.query !== normalizedQuery) setSearchToggles(null);
+  const effectiveExpanded = useMemo<ReadonlySet<TreeId>>(() => {
+    if (!search) return expanded;
+    if (!searchToggles || searchToggles.query !== search.query) return search.expandedIds;
+    const next = new Set(search.expandedIds);
+    for (const id of searchToggles.toggled) {
+      if (!next.delete(id)) next.add(id);
+    }
+    return next;
+  }, [search, searchToggles, expanded]);
+
   const rows = useMemo(() => {
-    const flat = flattenTree(data, expanded);
-    // aria-setsize / aria-posinset in one pass: `parents[d]` is the node at
-    // depth d of the current path, `counters[d]` the siblings seen at depth d.
-    const parents: TreeNode<T>[] = [];
+    const flat = flattenTree(data, effectiveExpanded, search?.visible);
+    // aria-setsize / aria-posinset in one pass: `counters[d]` is the number of siblings
+    // seen at depth d of the current path; the sizes are filled once the pass is over.
     const counters: number[] = [];
     const parentIndexes: number[] = [];
+    const childCounts = new Map<number, number>();
     const seen = new Set<TreeId>();
-    return flat.map((item) => {
+    const built = flat.map((item) => {
       const { depth } = item;
       counters.length = depth + 1;
       counters[depth] = (counters[depth] ?? 0) + 1;
-      parents.length = depth;
-      parents[depth] = item.node;
       parentIndexes.length = depth + 1;
       const parentIndex = depth === 0 ? -1 : (parentIndexes[depth - 1] ?? -1);
       parentIndexes[depth] = item.index;
-      const setSize =
-        depth === 0 ? data.length : (parents[depth - 1]?.children?.length ?? 1);
+      childCounts.set(parentIndex, (childCounts.get(parentIndex) ?? 0) + 1);
+      const setSize = 0;
       // Keys are prefixed by id type (so 1 and "1" differ); rows with a repeated id
       // get a "d:<row index>" key, a prefix no regular key can have.
       const key = seen.has(item.id)
@@ -96,10 +136,12 @@ function TreeViewInner<T = unknown>(
         setSize,
         posInSet: counters[depth],
         parentIndex,
-        isExpanded: item.hasChildren && expanded.has(item.id),
+        isExpanded: item.hasChildren && effectiveExpanded.has(item.id),
       };
     });
-  }, [data, expanded]);
+    for (const row of built) row.setSize = childCounts.get(row.parentIndex) ?? 1;
+    return built;
+  }, [data, effectiveExpanded, search]);
 
   // First visible row of each id: with duplicate ids the first occurrence wins.
   const firstIndexById = useMemo(() => {
@@ -186,12 +228,20 @@ function TreeViewInner<T = unknown>(
 
   const toggle = useCallback(
     (id: TreeId) => {
-      const next = new Set(expanded);
+      if (search) {
+        setSearchToggles((prev) => {
+          const toggled = new Set(prev && prev.query === search.query ? prev.toggled : []);
+          if (!toggled.delete(id)) toggled.add(id);
+          return { query: search.query, toggled };
+        });
+        return;
+      }
+      const next = new Set(effectiveExpanded);
       if (!next.delete(id)) next.add(id);
       setExpanded(next);
       onExpandedChange?.([...next]);
     },
-    [expanded, onExpandedChange],
+    [effectiveExpanded, search, onExpandedChange],
   );
 
   const select = (index: number) => {
@@ -248,6 +298,8 @@ function TreeViewInner<T = unknown>(
           const { item, key, setSize, posInSet, isExpanded } = rows[index]!;
           const { node, depth, hasChildren } = item;
           const isDisabled = !!node.isDisabled;
+          const isMatch = !!search && search.matches.has(node);
+          const matchRanges = isMatch && search ? getMatchRanges(node.label, search.query) : [];
           const state: RenderNodeState = {
             depth,
             isExpanded,
@@ -255,6 +307,9 @@ function TreeViewInner<T = unknown>(
             hasChildren,
             isSelected: index === selectedIndex,
             isFocused: hasFocus && index === focusedIndex,
+            isSearching: !!search,
+            isMatch,
+            matchRanges,
           };
           const rowClass =
             typeof rowClassName === "function"
@@ -314,13 +369,13 @@ function TreeViewInner<T = unknown>(
                       : "▸"
                   : null}
               </span>
-              {renderNode ? renderNode(node, state) : node.label}
+              {renderNode ? renderNode(node, state) : highlight(node.label, matchRanges)}
             </div>
           );
         })}
         </div>
       </div>
-      {rows.length === 0 && emptyState}
+      {rows.length === 0 && (search ? noResults : emptyState)}
     </>
   );
 }
