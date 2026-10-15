@@ -217,10 +217,11 @@ function TreeViewInner<T = unknown>(
   // out of the window too, the first rendered row takes the tabindex instead.
   const { focusedIndex, anchored, hasFocus } = keyboard;
   const focusedInWindow = focusedIndex >= start && focusedIndex < end;
-  const tabbableIndex = focusedInWindow || anchored ? focusedIndex : start;
+  const keepTarget = anchored || hasFocus;
+  const tabbableIndex = focusedInWindow || keepTarget ? focusedIndex : start;
   const renderedIndexes: number[] = [];
   for (let i = start; i < end; i++) renderedIndexes.push(i);
-  if (anchored && !focusedInWindow) renderedIndexes.push(focusedIndex);
+  if (keepTarget && !focusedInWindow) renderedIndexes.push(focusedIndex);
 
   // Ids in `expandedIds` that no longer exist in `data` are ignored but kept in the set.
   return (

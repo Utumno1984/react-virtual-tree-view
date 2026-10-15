@@ -71,7 +71,14 @@ export function useTreeKeyboard({
   useEffect(() => {
     const container = containerRef.current;
     if (hasFocus && container && focusedIndex >= 0 && !container.contains(document.activeElement)) {
-      pending.current = focusedIndex;
+      const active = document.activeElement;
+      if (active === null || active === document.body) {
+        pending.current = focusedIndex;
+      } else {
+        // Focus legitimately moved elsewhere (e.g. an external input): never steal it back.
+        pending.current = null;
+        setHasFocus(false);
+      }
     }
     tryFocus();
   });

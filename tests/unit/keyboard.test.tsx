@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { useEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TreeView } from "../../src";
 import type { TreeNode } from "../../src";
@@ -240,6 +241,53 @@ describe("keyboard", () => {
     expect(document.activeElement).toBe(row("b"));
     key("b", "End");
     expect(document.activeElement).toBe(row("b"));
+  });
+
+  describe("focus recovery never steals focus from outside the tree", () => {
+    const big: TreeNode[] = Array.from({ length: 1000 }, (_, i) => ({ id: i, label: `n${i}` }));
+    const scrollTree = (top: number) => {
+      const tree = screen.getByRole("tree");
+      tree.scrollTop = top;
+      fireEvent.scroll(tree);
+    };
+    // Sits before the tree, so its effect runs before the tree's own focus-recovery effect.
+    function FocusInputOn({ when }: { when: boolean }) {
+      useEffect(() => {
+        if (when) document.getElementById("outside")!.focus();
+      }, [when]);
+      return null;
+    }
+    function Harness({ data, moveFocus }: { data: TreeNode[]; moveFocus: boolean }) {
+      return (
+        <>
+          <input id="outside" />
+          <FocusInputOn when={moveFocus} />
+          <TreeView data={data} height={200} />
+        </>
+      );
+    }
+
+    it("keeps the focus on an external input when the unmounted focused row's slot is scrolled back", () => {
+      const { rerender } = render(<Harness data={big} moveFocus={false} />);
+      act(() => row("0").focus());
+      key("0", "End");
+      expect((document.activeElement as HTMLElement).dataset.rowIndex).toBe("999");
+      // The focused row disappears without a blur reaching React, and the user lands on an input.
+      rerender(<Harness data={big.slice(0, 999)} moveFocus />);
+      const input = document.getElementById("outside")!;
+      expect(document.activeElement).toBe(input);
+      act(() => scrollTree(0));
+      expect(document.activeElement).toBe(input);
+    });
+
+    it("moves the focus back to row 0 when the focused row is removed and nothing else took it", () => {
+      const { rerender } = render(<Harness data={big} moveFocus={false} />);
+      act(() => row("0").focus());
+      key("0", "End");
+      rerender(<Harness data={big.slice(0, 999)} moveFocus={false} />);
+      act(() => scrollTree(0));
+      expect((document.activeElement as HTMLElement).dataset.rowIndex).toBe("0");
+    });
   });
 
   it("1500 rows: End focuses the last row quickly", () => {
