@@ -1,4 +1,4 @@
-export type { TreeNode, TreeViewProps, RenderNodeState } from "./types";
+export type { TreeNode, TreeViewProps, RenderNodeState, TreeViewHandle } from "./types";
 export { TreeView } from "./TreeView";
 export {
   flattenTree,

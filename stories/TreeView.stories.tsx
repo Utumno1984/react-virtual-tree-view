@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { TreeView } from "../src";
+import { generateTree } from "./data/generateTree";
 import type { RenderNodeState, TreeNode } from "../src";
 
 const basicTree: TreeNode[] = [
@@ -68,10 +69,52 @@ export const Empty: Story = {
   },
 };
 
+/** An empty tree with a fixed `height`: the empty state sits right below, not under a blank box. */
+export const EmptyWithHeight: Story = {
+  args: {
+    data: [],
+    height: 400,
+    emptyState: <p className="p-2 text-gray-500">Nothing to show</p>,
+  },
+};
+
 export const SingleNode: Story = {
   args: { data: [{ id: "only", label: "Only node" }] },
 };
 
 export const WithDisabledNodes: Story = {
   args: { data: disabledTree },
+};
+
+const largeTree = generateTree({ count: 1200, maxDepth: 4, seed: 7 });
+const largeTreeParentIds: string[] = [];
+(function collect(nodes: TreeNode[]) {
+  for (const n of nodes) {
+    if (n.children?.length) {
+      largeTreeParentIds.push(String(n.id));
+      collect(n.children);
+    }
+  }
+})(largeTree);
+
+/** Same tree, but the first parent starts collapsed (expanding it moves rows below it). */
+export const LargeTreeFirstParentCollapsed: Story = {
+  args: {
+    data: largeTree,
+    defaultExpandedIds: largeTreeParentIds.slice(1),
+    height: 400,
+    rowHeight: 32,
+    "aria-label": "Large tree, first parent collapsed",
+  },
+};
+
+/** 1200 nodes, all expanded: only the visible rows (plus overscan) are in the DOM. */
+export const LargeTree: Story = {
+  args: {
+    data: largeTree,
+    defaultExpandedIds: largeTreeParentIds,
+    height: 400,
+    rowHeight: 32,
+    "aria-label": "Large tree",
+  },
 };
