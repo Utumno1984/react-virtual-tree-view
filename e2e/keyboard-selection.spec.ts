@@ -111,9 +111,44 @@ test.describe("selection and keyboard navigation", () => {
   });
 
   test("Space does not scroll the page", async ({ page }) => {
+    // Viewport shorter than the 400px tree, so the page is scrollable and Space would scroll it.
+    await page.setViewportSize({ width: 1000, height: 200 });
     await page.goto(story("large-tree"));
+    await expect(page.getByRole("tree")).toBeVisible();
+    expect(
+      await page.evaluate(() => document.documentElement.scrollHeight > window.innerHeight),
+    ).toBe(true);
     await tabIntoTree(page);
     await page.keyboard.press(" ");
     expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  });
+
+  test("height-less tree: End scrolls the page so the focused row is in view", async ({ page }) => {
+    await page.setViewportSize({ width: 1000, height: 80 });
+    await page.goto(story("basic"));
+    await tabIntoTree(page);
+    await page.keyboard.press("End");
+    await expect(page.locator('[data-node-id="notes"]')).toBeFocused();
+    await expect(page.locator('[data-node-id="notes"]')).toBeInViewport();
+  });
+
+  test("Tab re-enters on the selected row even after it left the rendered window", async ({
+    page,
+  }) => {
+    await page.goto(story("large-tree"));
+    const tree = page.getByRole("tree");
+    await expect(page.locator('[data-row-index="0"]')).toBeVisible();
+    await tree.evaluate((el) => (el.scrollTop = 1920));
+    const target = page.locator('[data-row-index="62"]');
+    await expect(target).toBeVisible();
+    await target.click();
+    await expect(target).toHaveAttribute("aria-selected", "true");
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await tree.evaluate((el) => (el.scrollTop = 0));
+    await expect(page.locator('[data-row-index="0"]')).toBeVisible();
+    // Reset the browser's sequential-focus starting point (it would otherwise be row 62).
+    await page.mouse.click(900, 300);
+    await page.keyboard.press("Tab");
+    await expect(page.locator('[role="treeitem"]:focus')).toHaveAttribute("data-row-index", "62");
   });
 });

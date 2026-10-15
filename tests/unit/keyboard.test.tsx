@@ -206,6 +206,42 @@ describe("keyboard", () => {
     expect(tabbables().map((el) => el.dataset.nodeId)).toEqual(["b"]);
   });
 
+  it("a selected row far outside the window is rendered and holds the only tabindex", () => {
+    const big: TreeNode[] = Array.from({ length: 1000 }, (_, i) => ({ id: i, label: `n${i}` }));
+    render(<TreeView data={big} height={200} defaultSelectedId={500} />);
+    expect(tabbables().map((el) => el.dataset.rowIndex)).toEqual(["500"]);
+    const sel = screen.getAllByRole("treeitem").find((el) => el.dataset.rowIndex === "500")!;
+    expect(sel.style.top).toBe("16000px");
+    expect(screen.getAllByRole("treeitem").length).toBeLessThan(30);
+  });
+
+  it("scrolls the focused row into view with block: nearest", () => {
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      writable: true,
+      value: scrollIntoView,
+    });
+    try {
+      render(<TreeView data={tree} />);
+      row("a").focus();
+      key("a", "ArrowDown");
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
+    } finally {
+      delete (HTMLElement.prototype as unknown as Record<string, unknown>).scrollIntoView;
+    }
+  });
+
+  it("when the focused row is removed from data, focus moves to the roving row", () => {
+    const { rerender } = render(<TreeView data={tree} defaultSelectedId="b" />);
+    act(() => row("a").focus());
+    expect(row("a").getAttribute("aria-selected")).toBe("false");
+    rerender(<TreeView data={[tree[1]!]} defaultSelectedId="b" />);
+    expect(document.activeElement).toBe(row("b"));
+    key("b", "End");
+    expect(document.activeElement).toBe(row("b"));
+  });
+
   it("1500 rows: End focuses the last row quickly", () => {
     const big: TreeNode[] = Array.from({ length: 1500 }, (_, i) => ({ id: i, label: `n${i}` }));
     render(<TreeView data={big} height={300} />);

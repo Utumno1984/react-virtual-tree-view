@@ -44,8 +44,12 @@ export function useTreeKeyboard({
   // first. A focused/selected id that is not visible (collapsed branch, unknown id) falls
   // through to the next candidate.
   let focusedIndex = -1;
+  // True when the roving row was chosen (focused or selected) rather than defaulted to the
+  // first row: only then is it worth keeping that row mounted outside the window.
+  let anchored = false;
   if (rows.length > 0) {
     const fromFocus = focusedId === null ? undefined : firstIndexById.get(focusedId);
+    anchored = fromFocus !== undefined || selectedIndex >= 0;
     focusedIndex = fromFocus ?? (selectedIndex >= 0 ? selectedIndex : 0);
   }
 
@@ -56,10 +60,19 @@ export function useTreeKeyboard({
     if (!el) return;
     pending.current = null;
     el.focus({ preventScroll: true });
+    // The tree may have no scroll of its own (no `height`, sized by content): then the page
+    // must scroll, and `preventDefault` on the arrow keys stops the browser doing it.
+    el.scrollIntoView?.({ block: "nearest" });
   }, [containerRef]);
 
   // After every render: a row that was scrolled into the rendered window can now take focus.
+  // If the tree believes it has focus but the focused row was unmounted (React fires no
+  // blur for that), focus returns to the roving row instead of leaving a ghost focus ring.
   useEffect(() => {
+    const container = containerRef.current;
+    if (hasFocus && container && focusedIndex >= 0 && !container.contains(document.activeElement)) {
+      pending.current = focusedIndex;
+    }
     tryFocus();
   });
 
@@ -125,5 +138,5 @@ export function useTreeKeyboard({
     setHasFocus(false);
   };
 
-  return { focusedIndex, hasFocus, onRowKeyDown, onRowFocus, onTreeFocus, onTreeBlur };
+  return { focusedIndex, anchored, hasFocus, onRowKeyDown, onRowFocus, onTreeFocus, onTreeBlur };
 }

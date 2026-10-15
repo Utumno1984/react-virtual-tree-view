@@ -211,15 +211,16 @@ function TreeViewInner<T = unknown>(
     select,
   });
 
-  // The roving tabindex row must exist in the DOM, or Tab could not enter the tree. While
-  // the tree has focus it stays mounted even if scrolled out of the window; otherwise,
-  // if it is out of the window, the first rendered row takes the tabindex instead.
-  const { focusedIndex, hasFocus } = keyboard;
+  // The roving tabindex row must exist in the DOM, or Tab could not enter the tree on the
+  // right row. A focused or selected row is always rendered (positioned with `top`), even
+  // when scrolled out of the window. With neither, the default is the first row; if that is
+  // out of the window too, the first rendered row takes the tabindex instead.
+  const { focusedIndex, anchored, hasFocus } = keyboard;
   const focusedInWindow = focusedIndex >= start && focusedIndex < end;
-  const tabbableIndex = focusedInWindow || hasFocus ? focusedIndex : start;
+  const tabbableIndex = focusedInWindow || anchored ? focusedIndex : start;
   const renderedIndexes: number[] = [];
   for (let i = start; i < end; i++) renderedIndexes.push(i);
-  if (hasFocus && focusedIndex >= 0 && !focusedInWindow) renderedIndexes.push(focusedIndex);
+  if (anchored && !focusedInWindow) renderedIndexes.push(focusedIndex);
 
   // Ids in `expandedIds` that no longer exist in `data` are ignored but kept in the set.
   return (
