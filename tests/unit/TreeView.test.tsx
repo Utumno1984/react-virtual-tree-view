@@ -195,6 +195,47 @@ describe("empty tree", () => {
   });
 });
 
+describe("review fixes", () => {
+  it("names the tree through aria-label and aria-labelledby", () => {
+    const { unmount } = render(<TreeView data={tree} aria-label="Files" />);
+    expect(screen.getByRole("tree", { name: "Files" })).toBeTruthy();
+    unmount();
+    render(
+      <>
+        <h2 id="t">Title</h2>
+        <TreeView data={tree} aria-labelledby="t" />
+      </>,
+    );
+    expect(screen.getByRole("tree", { name: "Title" })).toBeTruthy();
+  });
+
+  it("renders emptyState outside the tree role", () => {
+    render(<TreeView data={[]} emptyState={<p>Nothing here</p>} />);
+    expect(screen.getByRole("tree").contains(screen.getByText("Nothing here"))).toBe(false);
+  });
+
+  it("does not throw when `process` is not defined", () => {
+    vi.stubGlobal("process", undefined);
+    expect(() => render(<TreeView data={tree} />)).not.toThrow();
+    vi.unstubAllGlobals();
+  });
+
+  it('keeps 1, "1", repeated ids and lookalike ids from colliding as React keys', () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const data: TreeNode[] = [
+      { id: 1, label: "num" },
+      { id: "1", label: "str" },
+      { id: "x", label: "x" },
+      { id: "x", label: "x dup" },
+      { id: "d:3", label: "lookalike" },
+    ];
+    render(<TreeView data={data} />);
+    expect(screen.getAllByRole("treeitem")).toHaveLength(5);
+    expect(error).not.toHaveBeenCalled();
+  });
+});
+
 describe("duplicate ids", () => {
   const dup: TreeNode[] = [
     { id: "x", label: "One", children: [{ id: "y", label: "Y" }] },

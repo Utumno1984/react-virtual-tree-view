@@ -30,6 +30,10 @@ export interface TreeViewProps<T = unknown> {
   renderIcon?: (state: RenderNodeState) => React.ReactNode;
   className?: string;
   rowClassName?: string | ((state: RenderNodeState) => string);
-  /** Rendered inside the tree container when `data` is empty. */
+  /** Rendered next to (not inside) the `role="tree"` container when `data` is empty. */
   emptyState?: React.ReactNode;
+  /** Accessible name of the tree. */
+  "aria-label"?: string;
+  /** Id of the element that names the tree. */
+  "aria-labelledby"?: string;
 }

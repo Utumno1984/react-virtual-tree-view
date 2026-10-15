@@ -23,6 +23,16 @@ test.describe("TreeView e2e", () => {
     await expect(page.getByRole("treeitem")).toHaveCount(3);
   });
 
+  test("Basic: the tree has an accessible name", async ({ page }) => {
+    await page.goto(story("basic"));
+    await expect(page.getByRole("tree", { name: "File browser" })).toBeVisible();
+  });
+
+  test("Empty: the empty state is not inside the tree", async ({ page }) => {
+    await page.goto(story("empty"));
+    await expect(page.getByRole("tree").getByText("Nothing to show")).toHaveCount(0);
+  });
+
   test("Basic: children are indented by depth * indentation", async ({ page }) => {
     await page.goto(story("basic"));
     await page.locator('[data-node-id="docs"] [data-toggle]').click();

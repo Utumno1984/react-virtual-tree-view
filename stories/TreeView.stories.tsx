@@ -46,6 +46,7 @@ const meta = {
   component: TreeView,
   args: {
     data: basicTree,
+    "aria-label": "File browser",
     className: "w-80 rounded border border-gray-200 bg-white p-2 text-sm text-gray-800",
     rowClassName: (state: RenderNodeState) =>
       `flex items-center gap-1 rounded px-1 py-1 hover:bg-gray-100 ${
