@@ -65,6 +65,16 @@ describe("QA: tree-utils extra cases", () => {
     expect(p.clamped).toBe(true);
     expect(p.parentId).toBeNull();
   });
+  it("moveNode: duplicate ids among siblings never lose a node", () => {
+    const tree: TreeNode[] = [
+      { id: "x", label: "one" },
+      { id: "y", label: "y" },
+      { id: "x", label: "two" },
+    ];
+    const result = moveNode(tree, "x", null, 1);
+    expect(result.tree).toHaveLength(3);
+    expect(result.tree.map((n) => n.label).sort()).toEqual(["one", "two", "y"]);
+  });
   it("getProjection: over a descendant of active does not throw", () => {
     expect(() => getProjection(flat(), "a", "b", 20, 20)).not.toThrow();
   });

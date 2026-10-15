@@ -60,6 +60,38 @@ test.describe("DraggableTreeView reorder QA", () => {
     await expect(node(page, "A")).toBeVisible();
   });
 
+  test("scrolling the list during a drag drops on the row under the pointer (no double count)", async ({
+    page,
+  }) => {
+    await page.goto(story("large-tree"));
+    await expect(page.getByRole("treeitem").first()).toBeVisible();
+    const ids = await order(page);
+    const first = ids[0]!;
+    const third = await center(page, ids[2]!);
+    await dragTo(page, first, third);
+    await page.evaluate(() => {
+      const tree = document.querySelector('[role="tree"]') as HTMLElement;
+      const scroller = [tree, ...Array.from(tree.querySelectorAll<HTMLElement>("*"))].find(
+        (el) => el.scrollHeight > el.clientHeight && getComputedStyle(el).overflowY === "auto",
+      )!;
+      scroller.scrollTop = 160;
+    });
+    // the row now under the (unmoved) pointer; its position is its `top` / row height
+    const expected = await page.evaluate(
+      ({ x, y }) => {
+        const el = document
+          .elementsFromPoint(x, y)
+          .find((e) => e.getAttribute("role") === "treeitem") as HTMLElement;
+        return { id: el.getAttribute("data-node-id"), index: parseInt(el.style.top, 10) / 32 };
+      },
+      third,
+    );
+    expect(expected.index).toBeGreaterThan(5);
+    await page.mouse.up();
+    await expect(log(page)).toContainText(`"nodeId":"${first}"`);
+    await expect(log(page)).toContainText(`"index":${expected.index}`);
+  });
+
   test("a second drag after the first works", async ({ page }) => {
     await page.goto(story("draggable"));
     await dragTo(page, "A", await center(page, "C"));

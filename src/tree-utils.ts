@@ -292,7 +292,8 @@ export function moveNode<T>(
       return { ...child, children: newChildren };
     });
     if (parentId === fromParentId) {
-      next = next.filter((c) => c.id !== nodeId);
+      // by reference, not by id: a sibling sharing the id must not be removed too
+      next = next.filter((c) => c !== node);
       changed = true;
     }
     if (parentId === toParentId) {

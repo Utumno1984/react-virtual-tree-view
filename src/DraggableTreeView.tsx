@@ -1,9 +1,9 @@
-import { forwardRef, useCallback, useMemo, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ForwardedRef, ReactElement } from "react";
 import { DndContext, DragOverlay, PointerSensor, useDraggable, useSensor, useSensors } from "@dnd-kit/core";
 import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import type { DragRowProps, DropResolver, TreeDndAdapter } from "./dnd-internal";
-import { moveNode } from "./tree-utils";
+import { findDuplicateIds, moveNode } from "./tree-utils";
 import type { TreeId } from "./tree-utils";
 import { TreeViewWithDnd } from "./TreeView";
 import type { DraggableTreeViewProps, TreeViewHandle } from "./types";
@@ -38,26 +38,37 @@ function DraggableTreeViewInner<T = unknown>(
 ) {
   const [activeId, setActiveId] = useState<TreeId | null>(null);
   const resolverRef = useRef<DropResolver | null>(null);
-  const origin = useRef({ x: 0, y: 0 });
+  // Last known pointer position (viewport coordinates) while dragging. dnd-kit's `delta`
+  // includes the scroll that happened during the drag, which the drop resolver already
+  // accounts for by reading the live content position, so the pointer is tracked directly.
+  const pointer = useRef({ x: 0, y: 0 });
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: ACTIVATION_DISTANCE } }),
   );
 
   const onDragStart = useCallback(({ active, activatorEvent }: DragStartEvent) => {
     const event = activatorEvent as Partial<PointerEvent>;
-    origin.current = { x: event.clientX ?? 0, y: event.clientY ?? 0 };
+    pointer.current = { x: event.clientX ?? 0, y: event.clientY ?? 0 };
     setActiveId(active.id);
   }, []);
 
+  useEffect(() => {
+    if (activeId === null) return;
+    const onMove = (event: PointerEvent) => {
+      pointer.current = { x: event.clientX, y: event.clientY };
+    };
+    document.addEventListener("pointermove", onMove);
+    return () => document.removeEventListener("pointermove", onMove);
+  }, [activeId]);
+
   const { data } = props;
+  // moveNode addresses nodes by id: with duplicates a move could drop sibling nodes.
+  const hasDuplicateIds = useMemo(() => findDuplicateIds(data).length > 0, [data]);
   const onDragEnd = useCallback(
-    ({ active, delta }: DragEndEvent) => {
+    ({ active }: DragEndEvent) => {
       setActiveId(null);
-      const target = resolverRef.current?.(
-        origin.current.x + delta.x,
-        origin.current.y + delta.y,
-        active.id,
-      );
+      if (hasDuplicateIds) return;
+      const target = resolverRef.current?.(pointer.current.x, pointer.current.y, active.id);
       if (!target) return;
       const result = moveNode(data, active.id, target.parentId, target.index);
       if (result.tree === data) return;
@@ -68,7 +79,7 @@ function DraggableTreeViewInner<T = unknown>(
         index: result.index,
       });
     },
-    [data, onTreeChange],
+    [data, onTreeChange, hasDuplicateIds],
   );
   const onDragCancel = useCallback(() => setActiveId(null), []);
 
@@ -97,6 +108,10 @@ ForwardedDraggableTreeView.displayName = "DraggableTreeView";
 /**
  * `TreeView` with pointer drag & drop to reorder a node among its siblings. `data` is
  * controlled: apply the tree handed to `onTreeChange` to see the move.
+ *
+ * The drop target is the row under the pointer. Dragging upwards onto a child of an
+ * expanded sibling places the node before that sibling (the target is always a position
+ * among the dragged node's own siblings). Trees with duplicate ids never report a move.
  */
 export const DraggableTreeView = ForwardedDraggableTreeView as <T = unknown>(
   props: DraggableTreeViewProps<T> & { ref?: ForwardedRef<TreeViewHandle> },
