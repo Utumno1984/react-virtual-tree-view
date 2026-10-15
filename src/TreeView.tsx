@@ -79,6 +79,7 @@ function TreeViewInner<T = unknown>(
   ref: ForwardedRef<TreeViewHandle>,
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   // A non-positive or non-finite rowHeight would stack every row at top:0.
   const rowHeight =
     Number.isFinite(rowHeightProp) && rowHeightProp > 0 ? rowHeightProp : DEFAULT_ROW_HEIGHT;
@@ -301,12 +302,16 @@ function TreeViewInner<T = unknown>(
     if (!resolverRef) return;
     resolverRef.current = (x, y, activeId) => {
       const el = containerRef.current;
-      if (search || !el || rows.length === 0) return null;
+      const content = contentRef.current;
+      if (search || !el || !content || rows.length === 0) return null;
       const rect = el.getBoundingClientRect();
       if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) return null;
+      // Rows are positioned inside the content element, which already moves with the
+      // scroll and ignores the container's padding/border.
+      const top = content.getBoundingClientRect().top;
       const overIndex = Math.min(
         rows.length - 1,
-        Math.max(0, Math.floor((y - rect.top + el.scrollTop) / rowHeight)),
+        Math.max(0, Math.floor((y - top) / rowHeight)),
       );
       const flat: FlattenedNode<T>[] = rows.map((row) => row.item);
       return getSiblingDropTarget(flat, activeId, overIndex);
@@ -415,7 +420,7 @@ function TreeViewInner<T = unknown>(
             : { overflow: "auto", height, boxSizing: "border-box" }
         }
       >
-        <div role="none" style={{ position: "relative", height: totalHeight }}>
+        <div ref={contentRef} role="none" style={{ position: "relative", height: totalHeight }}>
         {renderedIndexes.map((index) => {
           const { item, key, setSize, posInSet } = rows[index]!;
           const { node, depth, hasChildren } = item;
