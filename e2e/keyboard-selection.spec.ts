@@ -1,6 +1,14 @@
 import { expect, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
 
 const story = (id: string) => `/iframe.html?id=treeview--${id}&viewMode=story`;
+
+// Waits for the story to render, then Tabs into the tree and checks a treeitem got focus.
+async function tabIntoTree(page: Page) {
+  await expect(page.locator('[role="treeitem"][tabindex="0"]')).toHaveCount(1);
+  await page.keyboard.press("Tab");
+  await expect(page.locator('[role="treeitem"]:focus')).toHaveCount(1);
+}
 
 test.describe("selection and keyboard navigation", () => {
   test("ControlledSelection: Tab, arrows, Enter select the nested node", async ({ page }) => {
@@ -46,7 +54,7 @@ test.describe("selection and keyboard navigation", () => {
 
   test("Home/End and edges", async ({ page }) => {
     await page.goto(story("basic"));
-    await page.keyboard.press("Tab");
+    await tabIntoTree(page);
     await page.keyboard.press("ArrowUp");
     await expect(page.locator('[data-node-id="docs"]')).toBeFocused();
     await page.keyboard.press("End");
@@ -70,7 +78,7 @@ test.describe("selection and keyboard navigation", () => {
 
   test("WithDisabledNodes: disabled is focusable but not selectable", async ({ page }) => {
     await page.goto(story("with-disabled-nodes"));
-    await page.keyboard.press("Tab");
+    await tabIntoTree(page);
     await page.keyboard.press("Enter");
     await expect(page.locator('[data-node-id="open"]')).toHaveAttribute("aria-selected", "true");
     await page.keyboard.press("ArrowDown");
@@ -79,7 +87,8 @@ test.describe("selection and keyboard navigation", () => {
     await page.keyboard.press(" ");
     await expect(page.locator('[data-node-id="locked"]')).toHaveAttribute("aria-selected", "false");
     await expect(page.locator('[data-node-id="open"]')).toHaveAttribute("aria-selected", "true");
-    await page.locator('[data-node-id="locked-leaf"]').click();
+    // Playwright treats aria-disabled rows as non-actionable, hence `force`.
+    await page.locator('[data-node-id="locked-leaf"]').click({ force: true });
     await expect(page.locator('[data-node-id="locked-leaf"]')).toHaveAttribute(
       "aria-selected",
       "false",
@@ -88,7 +97,7 @@ test.describe("selection and keyboard navigation", () => {
 
   test("LargeTree: End focuses the last row, scrolled into view", async ({ page }) => {
     await page.goto(story("large-tree"));
-    await page.keyboard.press("Tab");
+    await tabIntoTree(page);
     await page.keyboard.press("End");
     const focused = page.locator('[role="treeitem"]:focus');
     await expect(focused).toHaveCount(1);
@@ -103,7 +112,7 @@ test.describe("selection and keyboard navigation", () => {
 
   test("Space does not scroll the page", async ({ page }) => {
     await page.goto(story("large-tree"));
-    await page.keyboard.press("Tab");
+    await tabIntoTree(page);
     await page.keyboard.press(" ");
     expect(await page.evaluate(() => window.scrollY)).toBe(0);
   });
