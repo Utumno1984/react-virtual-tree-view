@@ -15,9 +15,11 @@ import type {
   ReactNode,
 } from "react";
 import { collectMatches, getMatchRanges, normalizeQuery } from "./search";
-import { findDuplicateIds, flattenTree, getSiblingDropTarget } from "./tree-utils";
-import type { FlattenedNode, TreeId } from "./tree-utils";
+import { findDuplicateIds, flattenTree, getDropTarget } from "./tree-utils";
+import type { DropTarget, FlattenedNode, TreeId } from "./tree-utils";
 import type { TreeDndAdapter } from "./dnd-internal";
+import { createProjectionCache } from "./projection-cache";
+import { DropIndicator } from "./DropIndicator";
 import type { RenderNodeState, TreeViewHandle, TreeViewProps } from "./types";
 import { useTreeKeyboard } from "./useTreeKeyboard";
 import type { KeyboardRow } from "./useTreeKeyboard";
@@ -300,7 +302,10 @@ function TreeViewInner<T = unknown>(
   const resolverRef = dnd?.resolverRef;
   useEffect(() => {
     if (!resolverRef) return;
-    resolverRef.current = (x, y, activeId) => {
+    // Rebuilt with `rows`, so the cache never outlives the layout it was computed for.
+    const cache = createProjectionCache<DropTarget | null>();
+    let flat: FlattenedNode<T>[] | null = null;
+    resolverRef.current = (x, y, activeId, dx) => {
       const el = containerRef.current;
       const content = contentRef.current;
       if (search || !el || !content || rows.length === 0) return null;
@@ -313,13 +318,31 @@ function TreeViewInner<T = unknown>(
         rows.length - 1,
         Math.max(0, Math.floor((y - top) / rowHeight)),
       );
-      const flat: FlattenedNode<T>[] = rows.map((row) => row.item);
-      return getSiblingDropTarget(flat, activeId, overIndex);
+      const steps = Math.round(dx / indentation);
+      return cache.get(overIndex, steps, () => {
+        flat ??= rows.map((row) => row.item);
+        return getDropTarget(flat, activeId, overIndex, dx, indentation);
+      });
     };
     return () => {
       resolverRef.current = null;
     };
-  }, [resolverRef, rows, rowHeight, search]);
+  }, [resolverRef, rows, rowHeight, search, indentation]);
+
+  const expandRef = dnd?.expandRef;
+  useEffect(() => {
+    if (!expandRef) return;
+    expandRef.current = (id) => {
+      if (effectiveExpanded.has(id)) return;
+      const next = new Set(effectiveExpanded);
+      next.add(id);
+      setExpanded(next);
+      onExpandedChange?.([...next]);
+    };
+    return () => {
+      expandRef.current = null;
+    };
+  }, [expandRef, effectiveExpanded, onExpandedChange]);
 
   const renderBody = (index: number, state: RenderNodeState, interactive: boolean) => {
     const { item } = rows[index]!;
@@ -471,6 +494,14 @@ function TreeViewInner<T = unknown>(
             </dnd.RowShell>
           );
         })}
+        {dnd && (
+          <DropIndicator
+            store={dnd.previewStore}
+            rowHeight={rowHeight}
+            indentation={indentation}
+            render={dnd.renderDropIndicator}
+          />
+        )}
         </div>
       </div>
       {/* Always mounted (even with no content) so DragOverlay can run its drop animation. */}

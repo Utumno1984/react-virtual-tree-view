@@ -17,6 +17,7 @@ export {
   findDuplicateIds,
   getAncestorIds,
   getSiblingDropTarget,
+  getDropTarget,
 } from "./tree-utils";
 export type {
   FlattenedNode,
@@ -24,4 +25,5 @@ export type {
   MoveResult,
   TreeId,
   SiblingDropTarget,
+  DropTarget,
 } from "./tree-utils";

@@ -79,6 +79,12 @@ function DraggableDemo({
           }`
         }
         renderIcon={Icon}
+        renderDropIndicator={() => (
+          <div className="-mt-px flex items-center">
+            <span className="h-2 w-2 rounded-full bg-blue-500" />
+            <span className="h-0.5 flex-1 bg-blue-500" />
+          </div>
+        )}
       />
       <pre data-testid="last-event" className="rounded bg-gray-50 p-2 text-xs text-gray-700">
         {lastEvent ? `onTreeChange ${JSON.stringify(lastEvent)}` : "onTreeChange: none yet"}
@@ -104,9 +110,18 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** Drag a row onto another sibling to reorder; the last `onTreeChange` event is logged below. */
+/**
+ * Drag a row onto another to reorder; move the pointer right to nest under the previous row
+ * and left to move up a level. The indicator shows the projected depth live; the last
+ * `onTreeChange` event is logged below.
+ */
 export const Draggable: Story = {
   args: { initialData: initialTree, defaultExpandedIds: ["p", "C", "docs"] },
+};
+
+/** "Documents" and "Charlie" start collapsed: nesting a node under them expands them on drop. */
+export const NestUnderCollapsed: Story = {
+  args: { initialData: initialTree, defaultExpandedIds: ["p"] },
 };
 
 /** `data` is controlled: the consumer ignores `onTreeChange`, so rows snap back after a drop. */

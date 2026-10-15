@@ -125,7 +125,18 @@ export function getProjection<T>(
     insertAt = overFull > activeIndex ? overWithout + 1 : overWithout;
   }
   const moved = without.slice(0, insertAt).concat(active, without.slice(insertAt));
+  return projectAtSlot(moved, insertAt, dragOffset, indentationWidth, maxDepth);
+}
 
+/** Projection of the item at `moved[insertAt]` (the dragged node in its new place). */
+function projectAtSlot<T>(
+  moved: readonly FlattenedNode<T>[],
+  insertAt: number,
+  dragOffset: number,
+  indentationWidth: number,
+  maxDepth?: number,
+): Projection {
+  const active = moved[insertAt]!;
   const previous = moved[insertAt - 1];
   const next = moved[insertAt + 1];
   const prevMax = previous ? previous.depth + 1 : 0;
@@ -150,6 +161,86 @@ export function getProjection<T>(
     parentId: calculateNewParent(moved, insertAt, depth),
     clamped,
   };
+}
+
+export interface DropTarget {
+  parentId: TreeId | null;
+  /** Position among the parent's children once the dragged node has been removed. */
+  index: number;
+  projection: Projection;
+  /**
+   * Row index (in `flattened`) above which the drop indicator is drawn: the dragged node
+   * would land between row `slot - 1` and row `slot`.
+   */
+  slot: number;
+  /** The drop would leave the tree unchanged (same parent, same position). */
+  isNoop: boolean;
+}
+
+/**
+ * Drop target for a pointer over row `overIndex` of `flattened` (which must not contain the
+ * descendants of the dragged node) with the pointer `dragOffset` px to the right of where
+ * the drag started. The vertical position picks the slot between rows, the horizontal one
+ * the depth (see `getProjection`), so a drop can reorder, nest under the previous row or
+ * move up a level. Hovering a row deeper than the dragged node counts as hovering its
+ * ancestor at the dragged node's depth. Returns `null` for unknown ids / out-of-range rows.
+ */
+export function getDropTarget<T>(
+  flattened: readonly FlattenedNode<T>[],
+  activeId: TreeId,
+  overIndex: number,
+  dragOffset: number,
+  indentationWidth: number,
+  maxDepth?: number,
+): DropTarget | null {
+  const activeIndex = flattened.findIndex((n) => n.id === activeId);
+  const active = flattened[activeIndex];
+  if (!active || overIndex < 0 || overIndex >= flattened.length) return null;
+
+  // `slot`: index in `flattened` before which the node is inserted.
+  let slot = activeIndex;
+  if (overIndex !== activeIndex) {
+    let anchor = overIndex;
+    while (anchor >= 0 && flattened[anchor]!.depth > active.depth) anchor--;
+    if (anchor < 0) return null;
+    const anchorNode = flattened[anchor]!;
+    if (anchor < activeIndex) {
+      slot = anchor;
+    } else if (anchorNode.depth < active.depth) {
+      slot = anchor + 1;
+    } else {
+      slot = anchor + 1;
+      while (slot < flattened.length && flattened[slot]!.depth > anchorNode.depth) slot++;
+    }
+  }
+
+  const without = flattened.slice(0, activeIndex).concat(flattened.slice(activeIndex + 1));
+  const insertAt = slot > activeIndex ? slot - 1 : slot;
+  const moved = without.slice(0, insertAt).concat(active, without.slice(insertAt));
+  const projection = projectAtSlot(moved, insertAt, dragOffset, indentationWidth, maxDepth);
+
+  const previous = moved[insertAt - 1];
+  let index = 0;
+  if (previous && projection.parentId === previous.id && projection.depth > previous.depth) {
+    // Nested under the previous row. If that row is collapsed its children are hidden
+    // and the node goes after all of them.
+    const following = moved[insertAt + 1];
+    if (following?.parentId !== previous.id) index = previous.node.children?.length ?? 0;
+  } else {
+    for (let i = 0; i < insertAt; i++) {
+      const item = moved[i]!;
+      if (item.parentId === projection.parentId && item.depth === projection.depth) index++;
+    }
+  }
+
+  let currentIndex = 0;
+  for (let i = 0; i < activeIndex; i++) {
+    const item = flattened[i]!;
+    if (item.parentId === active.parentId && item.depth === active.depth) currentIndex++;
+  }
+  const isNoop = projection.parentId === active.parentId && index === currentIndex;
+
+  return { parentId: projection.parentId, index, projection, slot, isNoop };
 }
 
 export interface SiblingDropTarget {

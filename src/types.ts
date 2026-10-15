@@ -1,4 +1,5 @@
 import type * as React from "react";
+import type { Projection } from "./tree-utils";
 
 export interface TreeNode<T = unknown> {
   id: string | number;
@@ -107,6 +108,12 @@ export interface DraggableTreeViewProps<T = unknown> extends TreeViewProps<T> {
    * Not called for a drop in the starting position, outside the tree, or after Esc.
    */
   onTreeChange?: (tree: TreeNode<T>[], event: TreeChangeEvent) => void;
+  /**
+   * Content of the drop indicator shown while dragging, for styling it. It is wrapped in an
+   * element (`data-drop-indicator`, `data-projected-depth`) already positioned between the two
+   * rows and indented to `projection.depth * indentation`. Defaults to a minimal line.
+   */
+  renderDropIndicator?: (projection: Projection) => React.ReactNode;
 }
 
 /** Imperative handle exposed through `ref`. */
