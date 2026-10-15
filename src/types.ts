@@ -88,6 +88,27 @@ export interface TreeViewProps<T = unknown> {
   "aria-labelledby"?: string;
 }
 
+/** Describes a completed drag, passed to `DraggableTreeView`'s `onTreeChange`. */
+export interface TreeChangeEvent {
+  /** Id of the node that was moved. */
+  nodeId: TreeNode["id"];
+  /** Parent before the move; `null` for a root node. */
+  fromParentId: TreeNode["id"] | null;
+  /** Parent after the move; `null` for the root level. */
+  toParentId: TreeNode["id"] | null;
+  /** Position among the new parent's children. */
+  index: number;
+}
+
+export interface DraggableTreeViewProps<T = unknown> extends TreeViewProps<T> {
+  /**
+   * Called when a drop changes the tree, with the new tree and a description of the move.
+   * `data` is controlled: if you do not update it, the displayed tree does not change.
+   * Not called for a drop in the starting position, outside the tree, or after Esc.
+   */
+  onTreeChange?: (tree: TreeNode<T>[], event: TreeChangeEvent) => void;
+}
+
 /** Imperative handle exposed through `ref`. */
 export interface TreeViewHandle {
   /** Scrolls the row of `id` into view. No-op for unknown ids or nodes in a collapsed branch. */

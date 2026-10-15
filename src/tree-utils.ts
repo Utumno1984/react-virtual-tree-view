@@ -152,6 +152,52 @@ export function getProjection<T>(
   };
 }
 
+export interface SiblingDropTarget {
+  parentId: TreeId | null;
+  /** Position among the parent's children once the dragged node has been removed. */
+  index: number;
+}
+
+/**
+ * Drop target for a same-parent reorder, from the row under the pointer.
+ * `flattened` must not contain the descendants of the dragged node (they are hidden
+ * while dragging). A row deeper than the dragged node counts as its ancestor sibling,
+ * so hovering the children of an expanded sibling drops the node after that sibling.
+ * Returns `null` when the row is outside the sibling group (other parent, shallower
+ * row), is the dragged node itself, or the drop would not change the order.
+ */
+export function getSiblingDropTarget<T>(
+  flattened: readonly FlattenedNode<T>[],
+  activeId: TreeId,
+  overIndex: number,
+): SiblingDropTarget | null {
+  const active = flattened.find((n) => n.id === activeId);
+  if (!active || overIndex < 0 || overIndex >= flattened.length) return null;
+
+  let over: FlattenedNode<T> | undefined;
+  for (let i = overIndex; i >= 0; i--) {
+    const item = flattened[i]!;
+    if (item.depth === active.depth) {
+      over = item;
+      break;
+    }
+    if (item.depth < active.depth) return null;
+  }
+  if (!over || over.parentId !== active.parentId || over === active) return null;
+
+  let activePosition = -1;
+  let overPosition = -1;
+  let position = 0;
+  for (const item of flattened) {
+    if (item.depth !== active.depth || item.parentId !== active.parentId) continue;
+    if (item === active) activePosition = position;
+    if (item === over) overPosition = position;
+    position++;
+  }
+  if (activePosition === -1 || overPosition === -1 || overPosition === activePosition) return null;
+  return { parentId: active.parentId, index: overPosition };
+}
+
 /** Ids that appear more than once in the tree (each reported once). */
 export function findDuplicateIds<T>(tree: TreeNode<T>[]): TreeId[] {
   const seen = new Set<TreeId>();
@@ -246,7 +292,8 @@ export function moveNode<T>(
       return { ...child, children: newChildren };
     });
     if (parentId === fromParentId) {
-      next = next.filter((c) => c.id !== nodeId);
+      // by reference, not by id: a sibling sharing the id must not be removed too
+      next = next.filter((c) => c !== node);
       changed = true;
     }
     if (parentId === toParentId) {
