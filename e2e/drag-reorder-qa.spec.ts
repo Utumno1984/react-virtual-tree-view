@@ -101,4 +101,46 @@ test.describe("DraggableTreeView reorder QA", () => {
     await page.mouse.up();
     await expect(log(page)).toContainText('"nodeId":"B"');
   });
+
+  test("no pointermove listener on document is left after Esc, a drop, or a second drag", async ({
+    page,
+  }) => {
+    // Counts document-level pointermove listeners added minus removed.
+    await page.addInitScript(() => {
+      const w = window as unknown as { __pm: number };
+      w.__pm = 0;
+      const add = document.addEventListener.bind(document) as (...a: unknown[]) => void;
+      const rem = document.removeEventListener.bind(document) as (...a: unknown[]) => void;
+      document.addEventListener = ((t: string, ...r: unknown[]) => {
+        if (t === "pointermove") w.__pm++;
+        return add(t, ...r);
+      }) as typeof document.addEventListener;
+      document.removeEventListener = ((t: string, ...r: unknown[]) => {
+        if (t === "pointermove") w.__pm--;
+        return rem(t, ...r);
+      }) as typeof document.removeEventListener;
+    });
+    const count = () => page.evaluate(() => (window as unknown as { __pm: number }).__pm);
+    await page.goto(story("draggable"));
+    // Warm-up drag: the page keeps one unrelated persistent listener once a drag has run;
+    // what matters is that further drags do not accumulate any.
+    await dragTo(page, "A", await center(page, "A"));
+    await page.mouse.up();
+    await expect(page.locator("[data-drag-overlay]")).toHaveCount(0);
+    const base = await count();
+    await dragTo(page, "A", await center(page, "D"));
+    expect(await count()).toBeGreaterThan(base);
+    await page.keyboard.press("Escape");
+    await page.mouse.up();
+    await expect(page.locator("[data-drag-overlay]")).toHaveCount(0);
+    expect(await count()).toBe(base);
+    await dragTo(page, "A", await center(page, "C"));
+    await page.mouse.up();
+    await expect(log(page)).toContainText('"nodeId":"A"');
+    expect(await count()).toBe(base);
+    await dragTo(page, "B", await center(page, "A"));
+    await page.mouse.up();
+    await expect(log(page)).toContainText('"nodeId":"B"');
+    expect(await count()).toBe(base);
+  });
 });
