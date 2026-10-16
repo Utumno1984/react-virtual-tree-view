@@ -20,6 +20,8 @@ const STORIES: Array<[name: string, id: string]> = [
   ["DraggableMaxDepth", "draggabletreeview-draggablemaxdepth--default"],
   ["DraggableAutoScroll", "draggabletreeview-draggableautoscroll--default"],
   ["ContextMenu", "treeview-contextmenu--context-menu"],
+  ["ExampleTheme", "styling-exampletheme--themed"],
+  ["ExampleThemeSearch", "styling-exampletheme--themed-search"],
 ];
 
 const log = (page: Page) => page.getByTestId("last-event");
