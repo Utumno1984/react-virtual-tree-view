@@ -83,6 +83,11 @@ export interface TreeViewProps<T = unknown> {
   height?: number;
   /** Extra rows rendered above and below the visible area. Default 5. */
   overscan?: number;
+  /**
+   * Enables a context menu on the nodes (right click, Shift+F10 or the ContextMenu key).
+   * The library defines no actions: `items(node)` returns them. See `TreeContextMenu`.
+   */
+  contextMenu?: TreeContextMenuOptions<T>;
   /** Accessible name of the tree. */
   "aria-label"?: string;
   /** Id of the element that names the tree. */
@@ -134,6 +139,51 @@ export interface DraggableTreeViewProps<T = unknown> extends TreeViewProps<T> {
    * projection); `projection.clamped` is available here too.
    */
   renderDropIndicator?: (projection: Projection) => React.ReactNode;
+}
+
+/** An entry of the context menu; the consumer defines it, the library has no default actions. */
+export interface MenuItem<T = unknown> {
+  /** Must be unique within the list returned for a node (it is used as the React key). */
+  id: string | number;
+  label: string;
+  /** Called once, with the node the menu was opened on, when the item is chosen. */
+  onSelect: (node: TreeNode<T>) => void;
+  /** A disabled item is shown with `aria-disabled="true"`, skipped by the arrows and inert. */
+  disabled?: boolean;
+}
+
+/** `TreeView`'s `contextMenu` prop. */
+export interface TreeContextMenuOptions<T = unknown> {
+  /**
+   * Entries for a node. Called for every node, disabled ones included. Returning `[]` means
+   * "no menu for this node": the library menu does not open and the native one is not blocked.
+   */
+  items: (node: TreeNode<T>) => MenuItem<T>[];
+  className?: string;
+  itemClassName?: string;
+  /** Custom content of an item. Defaults to `item.label`. */
+  renderItem?: (item: MenuItem<T>) => React.ReactNode;
+  /** Accessible name of the menu. Defaults to the node label. */
+  "aria-label"?: string;
+}
+
+/** Where the menu opens, in viewport coordinates. */
+export interface MenuAnchor {
+  x: number;
+  y: number;
+  /** Alternative `y` (the top of the row) used to flip the menu above when it would overflow. */
+  altY?: number;
+}
+
+/** Props of the standalone `TreeContextMenu` component (`TreeView` renders it for you). */
+export interface TreeContextMenuProps<T = unknown>
+  extends Omit<TreeContextMenuOptions<T>, "items"> {
+  /** The node the menu was opened on; handed to `onSelect`. */
+  node: TreeNode<T>;
+  items: MenuItem<T>[];
+  anchor: MenuAnchor;
+  /** Called when the menu wants to close; `restoreFocus` asks to refocus the originating row. */
+  onClose: (restoreFocus: boolean) => void;
 }
 
 /** Imperative handle exposed through `ref`. */
