@@ -349,7 +349,9 @@ describe("viewport", () => {
 });
 
 describe("listener cleanup", () => {
-  const trackedEvents = ["click", "keydown", "scroll", "resize"];
+  // Esc is handled on the menu element now (no document keydown listener); pointerdown and
+  // contextmenu were added to close on right/middle click, so they are tracked too.
+  const trackedEvents = ["click", "pointerdown", "contextmenu", "keydown", "scroll", "resize"];
 
   function spies() {
     const docAdd = vi.spyOn(document, "addEventListener");

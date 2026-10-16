@@ -307,9 +307,14 @@ function TreeViewInner<T = unknown>(
     setMenu(null);
     if (!restoreFocus || !current) return;
     // The row may have been re-created by a re-render: fall back to its index.
+    // Only if that index still holds the same node: never move the focus to another one.
     const row = current.rowEl.isConnected
       ? current.rowEl
-      : containerRef.current?.querySelector<HTMLElement>(`[data-row-index="${current.rowIndex}"]`);
+      : rows[current.rowIndex]?.item.node === current.node
+        ? containerRef.current?.querySelector<HTMLElement>(
+            `[data-row-index="${current.rowIndex}"]`,
+          )
+        : null;
     row?.focus({ preventScroll: true });
   };
   // A drag starting with the menu open closes it (focus stays with the drag).
@@ -570,6 +575,7 @@ function TreeViewInner<T = unknown>(
             "aria-level": depth + 1,
             "aria-setsize": setSize,
             "aria-posinset": posInSet,
+            "aria-haspopup": contextMenu ? ("menu" as const) : undefined,
             "aria-expanded": hasChildren ? state.isExpanded : undefined,
             "aria-selected": state.isSelected,
             "aria-disabled": state.isDisabled ? true : undefined,

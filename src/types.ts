@@ -143,6 +143,7 @@ export interface DraggableTreeViewProps<T = unknown> extends TreeViewProps<T> {
 
 /** An entry of the context menu; the consumer defines it, the library has no default actions. */
 export interface MenuItem<T = unknown> {
+  /** Must be unique within the list returned for a node (it is used as the React key). */
   id: string | number;
   label: string;
   /** Called once, with the node the menu was opened on, when the item is chosen. */

@@ -29,9 +29,11 @@ interface DemoProps {
   defaultExpandedIds?: string[];
   height?: number;
   draggable?: boolean;
+  /** Render a second tree below the first one. */
+  twoTrees?: boolean;
 }
 
-function ContextMenuDemo({ data, defaultExpandedIds, height, draggable }: DemoProps) {
+function ContextMenuDemo({ data, defaultExpandedIds, height, draggable, twoTrees }: DemoProps) {
   const [message, setMessage] = useState("");
   const [tree, setTree] = useState(data);
 
@@ -73,6 +75,15 @@ function ContextMenuDemo({ data, defaultExpandedIds, height, draggable }: DemoPr
       ) : (
         <TreeView data={tree} {...common} />
       )}
+      {twoTrees && (
+        <div data-testid="second-tree">
+          <TreeView
+            data={[{ id: "other", label: "Other tree" }]}
+            {...common}
+            aria-label="Second tree"
+          />
+        </div>
+      )}
       <p data-testid="action-message" className="text-sm text-gray-600">
         {message}
       </p>
@@ -99,6 +110,11 @@ export const ContextMenu: Story = {
 /** 1500 nodes: the menu closes when the tree scrolls (the row may unmount). */
 export const LargeTree: Story = {
   args: { data: largeTree, height: 300 },
+};
+
+/** Two trees on the page: opening a menu in one closes the other one's. */
+export const TwoTrees: Story = {
+  args: { data: menuTree, defaultExpandedIds: ["docs"], twoTrees: true },
 };
 
 /** `DraggableTreeView`: starting a drag closes the open menu. */

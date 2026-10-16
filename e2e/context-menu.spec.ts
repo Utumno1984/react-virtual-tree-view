@@ -106,6 +106,61 @@ test.describe("context menu", () => {
     await expect(node(page, "pics")).toBeFocused();
   });
 
+  test("a right or middle click outside closes the menu", async ({ page }) => {
+    await page.goto(story("context-menu"));
+    for (const button of ["right", "middle"] as const) {
+      await node(page, "pics").click({ button: "right" });
+      await expect(menu(page)).toBeVisible();
+      await page.mouse.click(600, 500, { button });
+      await expect(menu(page)).toHaveCount(0);
+    }
+  });
+
+  test("right click on another node of the same tree opens the menu for that node", async ({
+    page,
+  }) => {
+    await page.goto(story("context-menu"));
+    await node(page, "pics").click({ button: "right" });
+    await node(page, "docs").click({ button: "right" });
+    await expect(menu(page)).toHaveCount(1);
+    await page.getByRole("menuitem", { name: "Rinomina (demo)" }).click();
+    await expect(message(page)).toHaveText("Azione: Rinomina su Documents");
+  });
+
+  test("with two trees only one menu is open at a time", async ({ page }) => {
+    await page.goto(story("two-trees"));
+    await node(page, "pics").click({ button: "right" });
+    await expect(menu(page)).toHaveCount(1);
+    await node(page, "other").click({ button: "right" });
+    await expect(menu(page)).toHaveCount(1);
+    await expect(menu(page)).toHaveAttribute("aria-label", "Other tree");
+  });
+
+  test("near the right edge the menu keeps its natural size (items do not wrap)", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 500, height: 400 });
+    await page.goto(story("context-menu"));
+    // Without the demo's min-width the shrink-to-fit width is what is being measured.
+    await page.addStyleTag({ content: "[role=menu] { min-width: 0 !important; }" });
+    await node(page, "pics").click({ button: "right", position: { x: 5, y: 5 } });
+    const open = (await menu(page).boundingBox())!;
+    await page.evaluate(() => {
+      document.querySelector('[data-node-id="pics"]')!.dispatchEvent(
+        new MouseEvent("contextmenu", {
+          bubbles: true,
+          cancelable: true,
+          clientX: window.innerWidth - 1,
+          clientY: 100,
+        }),
+      );
+    });
+    const edge = (await menu(page).boundingBox())!;
+    expect(edge.width).toBeCloseTo(open.width, 0);
+    expect(edge.height).toBeCloseTo(open.height, 0);
+    expect(edge.x + edge.width).toBeLessThanOrEqual(500);
+  });
+
   test("a node whose items() is [] gets no library menu", async ({ page }) => {
     await page.goto(story("context-menu"));
     await expect(node(page, "notes")).toBeVisible();
