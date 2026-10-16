@@ -9,7 +9,12 @@ const config: StorybookConfig = {
     // e2e build (npm run build-storybook:e2e): development React and library warnings,
     // so the smoke suite can see console warnings. The regular Storybook is unchanged.
     if (process.env.STORYBOOK_E2E === "1") {
-      viteConfig.define = { ...viteConfig.define, "process.env.NODE_ENV": '"development"' };
+      viteConfig.define = {
+        ...viteConfig.define,
+        "process.env.NODE_ENV": '"development"',
+        // marker read by .storybook/preview.ts; the e2e suite fails fast when it is missing
+        __RVTV_E2E_BUILD__: "true",
+      };
     }
     return viteConfig;
   },

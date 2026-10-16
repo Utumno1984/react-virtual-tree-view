@@ -27,6 +27,22 @@ const indicator = (page: Page) => page.locator("[data-drop-indicator]");
 const overlay = (page: Page) => page.locator("[data-drag-overlay]");
 const scrollTop = (page: Page) => page.getByRole("tree").evaluate((el) => el.scrollTop);
 
+test.beforeAll(async ({ browser, baseURL }) => {
+  const page = await browser.newPage();
+  try {
+    await page.goto(`${baseURL}${storyUrl("treeview--basic")}`);
+    await page.waitForFunction(() => "__RVTV_E2E_BUILD__" in window);
+    const isE2eBuild = await page.evaluate(
+      () => (window as unknown as { __RVTV_E2E_BUILD__?: boolean }).__RVTV_E2E_BUILD__ === true,
+    );
+    if (!isE2eBuild) {
+      throw new Error("Storybook non buildato in modalità e2e: esegui `npm run build-storybook:e2e`");
+    }
+  } finally {
+    await page.close();
+  }
+});
+
 test.describe("every story opens cleanly", () => {
   for (const [name, id] of STORIES) {
     test(`${name} renders without console errors or warnings`, async ({ page }) => {
@@ -148,6 +164,7 @@ test.describe("scenarios", () => {
     const t0 = Date.now();
     await page.goto(storyUrl("treeview--large-tree"));
     await expect(page.getByRole("treeitem").first()).toBeVisible();
+    // Mounting is measured with React in development mode (build-storybook:e2e), slower than production.
     // Documented threshold: the 1200-node tree mounts and shows its first row in under 5 s.
     expect(Date.now() - t0).toBeLessThan(5000);
 

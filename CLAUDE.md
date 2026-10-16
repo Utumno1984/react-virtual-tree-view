@@ -94,6 +94,8 @@ pipeline completa: chiedi a Daniele/all'orchestratore se in dubbio.
   `getProjection`, `depth`, `indentation`, `calculateNewParent`), `stories/` (Storybook),
   `tests/unit/` (Vitest), `e2e/` (Playwright).
 - Test: `npm run check` = lint + tipi + build + unit test. `npm run test:e2e` = Playwright
-  contro Storybook buildato staticamente.
+  contro Storybook buildato staticamente in modalità e2e (`npm run build-storybook:e2e` da
+  eseguire prima; con il build di produzione `build-storybook` la suite smoke fallisce con un
+  messaggio chiaro).
 - Prima di ogni commit: `npm run check`. Prima di una PR pronta: anche `npm run test:e2e`.
 - Segreti: nessuno previsto in questo progetto (nessuna API esterna, nessun database).
