@@ -66,6 +66,17 @@ test.describe("TreeView virtualization QA", () => {
     await tree.evaluate((el) => {
       el.scrollTop = 10000;
     });
+    // The window re-renders on the (async) scroll event: until then the DOM still holds the
+    // rows from the top of the list, and picking one of them yields a row about to be unmounted
+    // (flaky "waiting for locator node-0"). Wait until the first rendered row is near scrollTop.
+    await expect
+      .poll(() =>
+        tree.evaluate((el) => {
+          const row = el.querySelector('[role="treeitem"]') as HTMLElement | null;
+          return row !== null && Math.abs(row.offsetTop - el.scrollTop) < el.clientHeight;
+        }),
+      )
+      .toBe(true);
     const first = page.locator('[role="treeitem"][aria-expanded="true"]').first();
     await expect(first).toBeVisible();
     const id = await first.getAttribute("data-node-id");
