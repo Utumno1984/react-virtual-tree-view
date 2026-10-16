@@ -63,6 +63,15 @@ describe("generateTree", () => {
     expect(Math.abs(ratio - 0.25)).toBeLessThan(0.05);
   });
 
+  it("keeps the same ids and structure regardless of disabledRatio", () => {
+    const strip = (nodes: TreeNode[]): unknown[] =>
+      nodes.map((n) => ({ id: n.id, children: n.children ? strip(n.children) : undefined }));
+    const plain = generateTree({ count: 500, maxDepth: 5, seed: 42, disabledRatio: 0 });
+    const withDisabled = generateTree({ count: 500, maxDepth: 5, seed: 42, disabledRatio: 0.3 });
+    expect(strip(withDisabled)).toEqual(strip(plain));
+    expect(walk(withDisabled).some((e) => e.node.isDisabled)).toBe(true);
+  });
+
   it("generates 5000 nodes in under 500 ms", () => {
     const start = performance.now();
     const tree = generateTree({ count: 5000, maxDepth: 6, seed: 5 });

@@ -37,13 +37,15 @@ export function generateTree({
 }: GenerateTreeOptions): TreeNode[] {
   const total = Math.max(0, Math.floor(count));
   const rand = mulberry32(seed);
+  // Independent stream for `isDisabled`, so the tree shape does not depend on `disabledRatio`.
+  const randDisabled = mulberry32((seed ^ 0x9e3779b9) >>> 0);
   const roots: TreeNode[] = [];
   // Nodes that can still accept children (depth < maxDepth), with their depth.
   const candidates: { node: TreeNode; depth: number }[] = [];
 
   for (let i = 0; i < total; i++) {
     const node: TreeNode = { id: `node-${i}`, label: `Node ${i}` };
-    if (disabledRatio > 0 && rand() < disabledRatio) node.isDisabled = true;
+    if (disabledRatio > 0 && randDisabled() < disabledRatio) node.isDisabled = true;
 
     let depth = 0;
     if (candidates.length === 0 || rand() < ROOT_PROBABILITY) {
