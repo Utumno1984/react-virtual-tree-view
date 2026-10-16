@@ -24,6 +24,7 @@ export function DropIndicator({ store, rowHeight, indentation, render }: DropInd
       aria-hidden="true"
       data-drop-indicator=""
       data-projected-depth={projection.depth}
+      data-depth-clamped={projection.clamped ? "true" : "false"}
       style={{
         position: "absolute",
         top: slot * rowHeight,
