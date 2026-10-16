@@ -11,6 +11,7 @@ import type {
   FocusEvent,
   ForwardedRef,
   KeyboardEvent,
+  MouseEvent,
   ReactElement,
   ReactNode,
 } from "react";
@@ -20,6 +21,8 @@ import type { DropTarget, FlattenedNode, TreeId } from "./tree-utils";
 import type { TreeDndAdapter } from "./dnd-internal";
 import { createProjectionCache } from "./projection-cache";
 import { DropIndicator } from "./DropIndicator";
+import { TreeContextMenu } from "./TreeContextMenu";
+import type { MenuAnchor, MenuItem, TreeNode } from "./types";
 import type { RenderNodeState, TreeViewHandle, TreeViewProps } from "./types";
 import { useTreeKeyboard } from "./useTreeKeyboard";
 import type { KeyboardRow } from "./useTreeKeyboard";
@@ -74,6 +77,7 @@ function TreeViewInner<T = unknown>(
   emptyState,
   searchQuery,
   noResults,
+  contextMenu,
   "aria-label": ariaLabel,
   "aria-labelledby": ariaLabelledBy,
   dnd,
@@ -270,6 +274,49 @@ function TreeViewInner<T = unknown>(
     if (selectedId === undefined) setUncontrolledSelectedId(row.item.id);
     onSelect?.(row.item.id, row.item.node);
   };
+
+  // Context menu: the node (by reference, ids may repeat), its entries and where it opens.
+  const [menu, setMenu] = useState<{
+    node: TreeNode<T>;
+    items: MenuItem<T>[];
+    anchor: MenuAnchor;
+    rowEl: HTMLElement;
+    rowIndex: number;
+    source: "pointer" | "keyboard";
+    key: number;
+  } | null>(null);
+  const menuCounter = useRef(0);
+  const menuItemsFn = contextMenu?.items;
+  const openMenu = (
+    index: number,
+    rowEl: HTMLElement,
+    anchor: MenuAnchor,
+    source: "pointer" | "keyboard",
+  ): boolean => {
+    const node = rows[index]?.item.node;
+    const items = node && menuItemsFn ? menuItemsFn(node) : [];
+    if (!node || items.length === 0) {
+      setMenu(null);
+      return false;
+    }
+    setMenu({ node, items, anchor, rowEl, rowIndex: index, source, key: ++menuCounter.current });
+    return true;
+  };
+  const closeMenu = (restoreFocus: boolean) => {
+    const current = menu;
+    setMenu(null);
+    if (!restoreFocus || !current) return;
+    // The row may have been re-created by a re-render: fall back to its index.
+    const row = current.rowEl.isConnected
+      ? current.rowEl
+      : containerRef.current?.querySelector<HTMLElement>(`[data-row-index="${current.rowIndex}"]`);
+    row?.focus({ preventScroll: true });
+  };
+  // A drag starting with the menu open closes it (focus stays with the drag).
+  const menuOpen = menu !== null;
+  useEffect(() => {
+    if (menuOpen && activeDragId !== null) setMenu(null);
+  }, [menuOpen, activeDragId]);
 
   const keyboard = useTreeKeyboard({
     rows: keyboardRows,
@@ -477,8 +524,46 @@ function TreeViewInner<T = unknown>(
             "data-node-id": String(node.id),
             "data-row-index": index,
             tabIndex: index === tabbableIndex ? 0 : -1,
-            onKeyDown: (event: KeyboardEvent<HTMLDivElement>) =>
-              keyboard.onRowKeyDown(event, index),
+            onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => {
+              if (
+                contextMenu &&
+                event.target === event.currentTarget &&
+                ((event.key === "F10" && event.shiftKey && !event.ctrlKey && !event.altKey) ||
+                  event.key === "ContextMenu")
+              ) {
+                const rect = event.currentTarget.getBoundingClientRect();
+                const opened = openMenu(
+                  index,
+                  event.currentTarget,
+                  { x: rect.left, y: rect.bottom, altY: rect.top },
+                  "keyboard",
+                );
+                // Nothing to show: leave the native menu alone.
+                if (opened) event.preventDefault();
+                return;
+              }
+              keyboard.onRowKeyDown(event, index);
+            },
+            onContextMenu: contextMenu
+              ? (event: MouseEvent<HTMLDivElement>) => {
+                  // The key already opened the menu; the browser may add its own contextmenu event.
+                  if (
+                    menu?.source === "keyboard" &&
+                    menu.rowEl === event.currentTarget &&
+                    event.button === 0
+                  ) {
+                    event.preventDefault();
+                    return;
+                  }
+                  const opened = openMenu(
+                    index,
+                    event.currentTarget,
+                    { x: event.clientX, y: event.clientY },
+                    "pointer",
+                  );
+                  if (opened) event.preventDefault();
+                }
+              : undefined,
             onFocus: (event: FocusEvent<HTMLDivElement>) => keyboard.onRowFocus(event, index),
             onClick: () => select(index),
             "data-disabled": state.isDisabled ? "" : undefined,
@@ -527,6 +612,19 @@ function TreeViewInner<T = unknown>(
         )}
         </div>
       </div>
+      {menu && contextMenu && (
+        <TreeContextMenu
+          key={menu.key}
+          node={menu.node}
+          items={menu.items}
+          anchor={menu.anchor}
+          onClose={closeMenu}
+          className={contextMenu.className}
+          itemClassName={contextMenu.itemClassName}
+          renderItem={contextMenu.renderItem}
+          aria-label={contextMenu["aria-label"]}
+        />
+      )}
       {/* Always mounted (even with no content) so DragOverlay can run its drop animation. */}
       {dnd?.renderOverlay(overlay)}
       {rows.length === 0 && (search ? noResults : emptyState)}

@@ -5,8 +5,13 @@ export type {
   TreeViewHandle,
   TreeChangeEvent,
   DraggableTreeViewProps,
+  MenuItem,
+  MenuAnchor,
+  TreeContextMenuOptions,
+  TreeContextMenuProps,
 } from "./types";
 export { TreeView } from "./TreeView";
+export { TreeContextMenu } from "./TreeContextMenu";
 export { DraggableTreeView } from "./DraggableTreeView";
 export {
   flattenTree,
