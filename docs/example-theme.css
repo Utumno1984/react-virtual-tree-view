@@ -109,9 +109,14 @@
   cursor: pointer;
   outline: none;
 }
-[data-tree-context-menu] [role="menuitem"]:hover,
-[data-tree-context-menu] [role="menuitem"]:focus {
+[data-tree-context-menu] [role="menuitem"]:hover {
   background: #dbeafe;
+}
+/* Keyboard focus must be visible (WCAG 2.4.7, 1.4.11): outline plus a background distinct from hover. */
+[data-tree-context-menu] [role="menuitem"]:focus-visible {
+  outline: 2px solid var(--rvtv-accent, #2563eb);
+  outline-offset: -2px;
+  background: #bfdbfe;
 }
 [data-tree-context-menu] [role="menuitem"][aria-disabled="true"] {
   color: #9ca3af;

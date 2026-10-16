@@ -100,7 +100,13 @@ The library never adds a class of its own. You choose them:
 | drop indicator, clamped | `[data-drop-indicator][data-depth-clamped="true"]` |
 | search match | `mark` inside the row (no attribute) |
 | menu item disabled | `[role="menuitem"][aria-disabled="true"]` |
-| menu item focused | `[role="menuitem"]:focus` |
+| menu item focused | `[role="menuitem"]:focus-visible` |
+
+> **Contrast of disabled text.** The example theme greys disabled rows and menu items with `#9ca3af`
+> (about 2.5:1 on white). That is intentional: WCAG 1.4.3 exempts inactive components, and the low contrast
+> signals the disabled state. If your design needs more contrast, use a darker grey such as `#6b7280`
+> (about 4.8:1) or `#4b5563` (about 7.6:1) for `[aria-disabled="true"]`, and keep the "disabled" cue with
+> something other than colour (strikethrough, an icon, `cursor: not-allowed`). Never rely on colour alone.
 
 ## Naming conventions (what is consistent)
 
