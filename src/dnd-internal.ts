@@ -8,6 +8,12 @@ export interface DragRowProps extends HTMLAttributes<HTMLDivElement> {
   dragDisabled: boolean;
 }
 
+/** Cached viewport rect and scroll offset of the tree container (internal). */
+export interface ContainerGeometry {
+  rect: { top: number; bottom: number; left: number; right: number };
+  scrollTop: number;
+}
+
 /**
  * Resolves the drop target for a pointer position in viewport coordinates, `dx` px to the
  * right of where the drag started (internal). `null` when the pointer is outside the tree.
@@ -19,6 +25,8 @@ export type DropResolver = (
   dx: number,
   /** Height of the dragged subtree, computed once when the drag starts. */
   subtreeHeight?: number,
+  /** Cached container geometry (auto-scroll); when omitted the resolver measures the DOM. */
+  geometry?: ContainerGeometry,
 ) => DropTarget | null;
 
 /** Where the drop indicator is drawn, in tree coordinates. */
@@ -67,6 +75,8 @@ export interface TreeDndAdapter {
   RowShell: ComponentType<DragRowProps>;
   /** The tree assigns its pointer-to-target resolver here on every commit. */
   resolverRef: MutableRefObject<DropResolver | null>;
+  /** The tree assigns its scroll container here (used by the auto-scroll loop). */
+  scrollElRef: MutableRefObject<HTMLElement | null>;
   /** The tree assigns a function that expands a node (state + `onExpandedChange`). */
   expandRef: MutableRefObject<((id: TreeId) => void) | null>;
   /** Live projection shown by the drop indicator. */
