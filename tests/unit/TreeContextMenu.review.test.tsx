@@ -1,8 +1,14 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { TreeView } from "../../src";
+import { TreeContextMenu, TreeView } from "../../src";
 import type { MenuItem, TreeNode } from "../../src";
+
+// The outside pointerdown decides in a timer (once the press has moved the focus).
+const flush = () =>
+  act(() => {
+    vi.runAllTimers();
+  });
 
 afterEach(() => {
   cleanup();
@@ -35,6 +41,7 @@ function setup(onSelect = vi.fn()) {
 
 describe("outside pointer and right click", () => {
   it("a contextmenu or pointerdown (any button) outside the menu closes it", () => {
+    vi.useFakeTimers();
     setup();
     fireEvent.contextMenu(row("b"));
     fireEvent.contextMenu(document.body);
@@ -42,10 +49,12 @@ describe("outside pointer and right click", () => {
 
     fireEvent.contextMenu(row("b"));
     fireEvent.pointerDown(document.body, { button: 2 });
+    flush();
     expect(menu()).toBeNull();
 
     fireEvent.contextMenu(row("b"));
     fireEvent.pointerDown(document.body, { button: 1 });
+    flush();
     expect(menu()).toBeNull();
   });
 
@@ -58,6 +67,7 @@ describe("outside pointer and right click", () => {
   });
 
   it("two trees never show two menus", () => {
+    vi.useFakeTimers();
     const items = () => [{ id: "i", label: "I", onSelect: vi.fn() }];
     render(
       <>
@@ -69,6 +79,7 @@ describe("outside pointer and right click", () => {
     fireEvent.contextMenu(row("x"));
     fireEvent.pointerDown(row("y"), { button: 2 });
     fireEvent.contextMenu(row("y"));
+    flush();
     expect(screen.getAllByRole("menu")).toHaveLength(1);
   });
 
@@ -104,6 +115,7 @@ describe("outside pointer and right click", () => {
   });
 
   it("removes the new listeners too (add/remove balanced)", () => {
+    vi.useFakeTimers();
     setup();
     const types = ["click", "pointerdown", "contextmenu", "keydown", "scroll", "resize"];
     const adds: unknown[][] = [];
@@ -125,11 +137,57 @@ describe("outside pointer and right click", () => {
     track(window);
     fireEvent.contextMenu(row("b"));
     fireEvent.pointerDown(document.body);
+    flush();
     const outside = adds.filter((a) => a[0] === "pointerdown" || a[0] === "contextmenu");
     expect(outside.length).toBe(2);
     for (const call of adds) {
       expect(removes.some((r) => r[0] === call[0] && r[1] === call[1] && r[2] === call[2])).toBe(true);
     }
+  });
+});
+
+describe("outside pointerdown closes exactly once", () => {
+  const mount = (onClose: (restoreFocus: boolean) => void) =>
+    render(
+      <TreeContextMenu
+        node={tree[0]!}
+        items={[{ id: "x", label: "X", onSelect: vi.fn() }]}
+        anchor={{ x: 10, y: 10 }}
+        onClose={onClose}
+      />,
+    );
+
+  it("pointerdown outside then unmount: the pending timer is cancelled, onClose never fires", () => {
+    vi.useFakeTimers();
+    const onClose = vi.fn();
+    const { unmount } = mount(onClose);
+    fireEvent.pointerDown(document.body);
+    unmount();
+    vi.runAllTimers();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("pointerdown outside without unmount: one call, restoring the focus when it is on the body", () => {
+    vi.useFakeTimers();
+    const onClose = vi.fn();
+    mount(onClose);
+    fireEvent.pointerDown(document.body);
+    expect(onClose).not.toHaveBeenCalled();
+    (document.activeElement as HTMLElement).blur();
+    vi.runAllTimers();
+    expect(onClose.mock.calls).toEqual([[true]]);
+  });
+
+  it("does not restore the focus when the press moved it elsewhere; repeated presses close once", () => {
+    vi.useFakeTimers();
+    const onClose = vi.fn();
+    render(<button>other</button>);
+    mount(onClose);
+    fireEvent.pointerDown(document.body);
+    fireEvent.pointerDown(document.body);
+    screen.getByText("other").focus();
+    vi.runAllTimers();
+    expect(onClose.mock.calls).toEqual([[false]]);
   });
 });
 

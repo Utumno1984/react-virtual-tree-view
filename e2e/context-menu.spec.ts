@@ -219,7 +219,7 @@ test.describe("context menu", () => {
     await expect(menu(page)).toHaveCount(0);
   });
 
-  test("starting a drag closes the menu", async ({ page }) => {
+  test("pressing on another row to start a drag closes the menu (outside pointerdown)", async ({ page }) => {
     await page.goto(story("draggable"));
     await node(page, "pics").click({ button: "right" });
     await expect(menu(page)).toBeVisible();

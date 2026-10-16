@@ -73,14 +73,16 @@ export function TreeContextMenu<T = unknown>({
       onCloseRef.current(active === null || active === document.body || !!menu?.contains(active));
     };
     // Any button pressed outside closes the menu (right and middle click fire no `click`).
-    // The focus has not moved yet at this point: close without restoring it, then, once the
-    // press has run its default action, give it back to the row only if it was left on the body.
+    // The focus has not moved yet at this point: decide once the press has run its default
+    // action, and give it back to the row only if it was left on the body. The timer is the
+    // only place that closes, and it is cancelled on unmount (no close after the menu is gone).
+    let pending: ReturnType<typeof setTimeout> | undefined;
     const onDocumentPointerDown = (event: PointerEvent) => {
       if (menu && event.target instanceof Node && menu.contains(event.target)) return;
-      onCloseRef.current(false);
-      setTimeout(() => {
+      clearTimeout(pending);
+      pending = setTimeout(() => {
         const active = document.activeElement;
-        if (active === null || active === document.body) onCloseRef.current(true);
+        onCloseRef.current(active === null || active === document.body);
       }, 0);
     };
     // A native context menu opened outside (e.g. on the page background). A contextmenu on a
@@ -104,6 +106,7 @@ export function TreeContextMenu<T = unknown>({
     window.addEventListener("scroll", onScroll, true);
     window.addEventListener("resize", onResize);
     return () => {
+      clearTimeout(pending);
       document.removeEventListener("click", onDocumentClick, true);
       document.removeEventListener("pointerdown", onDocumentPointerDown, true);
       document.removeEventListener("contextmenu", onDocumentContextMenu, true);
