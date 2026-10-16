@@ -158,6 +158,12 @@ export function StandaloneContextMenu() {
 
 // --- Helpers ----------------------------------------------------------------------------
 
+export function moveExample() {
+  const moved = moveNode(files, "notes", "docs", 0);
+  const nextTree = moved.tree; // the new tree (same array as `files` if the move was invalid)
+  return nextTree;
+}
+
 export function helperExamples() {
   const flat = flattenTree(files, ["docs"]);
   const projection = getProjection(flat, "cv", "reports", 24, 24, 3);

@@ -7,17 +7,16 @@ and [Storybook](https://storybook.js.org) is the showcase and documentation.
 
 ## Status
 
-**Not yet published to npm.** The components and helpers below are implemented; until the first
-release, install from a clone of the repository.
+**Pre-1.0:** the API may change between minor versions.
 
 ## Installation
 
 ```bash
-npm install react-virtual-tree-view react @dnd-kit/core
+npm install react-virtual-tree-view react react-dom @dnd-kit/core
 ```
 
 `react` (>= 18) and `@dnd-kit/core` (^6) are **peer dependencies**: the package has no other runtime
-dependency (a test checks that `dist/` only imports them). `@dnd-kit/core` is used by
+dependency (`react-dom` is installed too because `@dnd-kit/core` needs it; a test checks that `dist/` only imports them). `@dnd-kit/core` is used by
 `DraggableTreeView` but the bundle imports it for all components, so install it in any case.
 
 The library is **headless**: it ships no CSS. Layout that virtualization and drag & drop depend on is
@@ -257,10 +256,21 @@ Pure functions from `tree-utils`, exported for custom drag logic, tests and tree
 | `getDropTarget(flat, activeId, overIndex, dragOffset, indentation, maxDepth?, subtreeHeight?)` | Full drop target: insertion slot, depth and parent. |
 | `getSiblingDropTarget(flat, activeId, overIndex)` | Drop target for a same-parent reorder. |
 | `calculateNewParent(flat, overIndex, depth)` | Parent id of a row placed at `overIndex` at a given depth. |
-| `moveNode(tree, nodeId, toParentId, index)` | Immutable move; invalid moves return the same tree. |
+| `moveNode(tree, nodeId, toParentId, index)` | Immutable move; returns a `MoveResult` `{ tree, fromParentId, toParentId, index }`. For an invalid move `tree` is the same array you passed in. |
 | `getSubtreeHeight(node)` | Height of a subtree (a leaf is 0). |
 | `getAncestorIds(tree, id)` | Ancestor ids from the root down to the parent. |
 | `findDuplicateIds(tree)` | Ids that appear more than once. |
+
+`getProjection`, `getDropTarget` and `getSiblingDropTarget` return `null` when no valid target exists
+(unknown ids, out-of-range index), so check the result before using it. `moveNode` returns an object,
+not the tree:
+
+```tsx
+import { moveNode } from "react-virtual-tree-view";
+
+const moved = moveNode(files, "notes", "docs", 0);
+const nextTree = moved.tree; // the new tree (same array as `files` if the move was invalid)
+```
 
 Type exports: `TreeNode`, `TreeViewProps`, `DraggableTreeViewProps`, `RenderNodeState`, `TreeViewHandle`,
 `TreeChangeEvent`, `MenuItem`, `MenuAnchor`, `TreeContextMenuOptions`, `TreeContextMenuProps`,
@@ -271,7 +281,8 @@ Type exports: `TreeNode`, `TreeViewProps`, `DraggableTreeViewProps`, `RenderNode
 - **Stable ids.** Every `TreeNode` needs its own unique `id`. The drag uses it as the draggable id,
   never the row position: a positional id would break the `DragOverlay` drop animation (it animates
   towards an id that, after the re-order, belongs to another node). Duplicate ids are reported in
-  development.
+  development; with duplicate ids `DraggableTreeView` shows no drop indicator and never calls
+  `onTreeChange`.
 - **Rows are positioned with `top`, not `transform`.** dnd-kit measures the draggable's rect with CSS
   transforms removed to anchor the overlay, so a `translateY` would add a hidden offset. Do not override
   the inline `position`, `top`, `height` and `padding-left` of the rows.
