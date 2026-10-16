@@ -1,6 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// e2e tests run against the statically built Storybook (npm run build-storybook).
+// e2e tests run against the statically built Storybook in e2e mode (npm run build-storybook:e2e:
+// development React, so console warnings are visible; the smoke suite rejects a production build).
 export default defineConfig({
   testDir: "e2e",
   fullyParallel: true,

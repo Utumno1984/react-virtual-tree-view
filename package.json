@@ -26,7 +26,8 @@
     "test:e2e": "playwright test",
     "check": "npm run lint && npm run typecheck && npm run build && npm run test:unit",
     "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build"
+    "build-storybook": "storybook build",
+    "build-storybook:e2e": "STORYBOOK_E2E=1 storybook build"
   },
   "keywords": [
     "react",
