@@ -89,7 +89,20 @@ test.describe("scenarios", () => {
     await expect(node(page, "docs")).toHaveAttribute("aria-level", "3");
   });
 
-  // Scenario 4 (duplicate ids) is pending a decision: see the PR description.
+  test("4. duplicate ids: a single library warning, no errors, the tree renders", async ({
+    page,
+  }) => {
+    const consoleLog = collectConsole(page);
+    await page.goto(storyUrl("tests-duplicateids--duplicate-ids"));
+    await expect(page.getByRole("tree")).toBeVisible();
+    await expect(page.getByRole("treeitem", { name: /Unique node/ })).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    const ours = consoleLog.warnings.filter((w) => w.includes("[react-virtual-tree-view]"));
+    expect(ours).toHaveLength(1);
+    expect(ours[0]).toContain("Duplicate node ids");
+    expect(ours[0]).toContain("dup");
+    expect(consoleLog.errors).toEqual([]);
+  });
 
   test("5. search without matches: no treeitem, message; clearing restores the initial expansion", async ({
     page,

@@ -19,7 +19,7 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       - run: npm run test:unit
-      - run: npm run build-storybook
+      - run: npm run build-storybook:e2e
       - name: Get Playwright version
         id: pw
         run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
