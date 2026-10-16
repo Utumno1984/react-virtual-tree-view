@@ -1,0 +1,119 @@
+/*
+ * Example theme for react-virtual-tree-view (documentation/demo only, not shipped in the package).
+ *
+ * It uses ONLY the hooks listed in docs/styling-hooks.md: ARIA attributes, `data-*` attributes
+ * and the `className` prop. Scope it by giving the tree `className="rvtv-tree"`.
+ * The drag overlay, the drop indicator content and the context menu are the exception: they are
+ * styled through their own hooks (`[data-drag-overlay]`, `renderDropIndicator`, `[data-tree-context-menu]`).
+ *
+ * The library sets positioning inline (`position`, `top`, `height`, `padding-left`): do not override those.
+ */
+
+.rvtv-tree {
+  --rvtv-row-hover: #f3f4f6;
+  --rvtv-row-selected: #dbeafe;
+  --rvtv-accent: #2563eb;
+  --rvtv-muted: #9ca3af;
+  --rvtv-warn: #f59e0b;
+
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #fff;
+  color: #1f2937;
+  font: 14px/1.4 system-ui, sans-serif;
+}
+
+/* Rows. */
+.rvtv-tree [role="treeitem"] {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  user-select: none;
+  outline: none;
+}
+.rvtv-tree [role="treeitem"]:hover {
+  background: var(--rvtv-row-hover);
+}
+.rvtv-tree [role="treeitem"][aria-selected="true"] {
+  background: var(--rvtv-row-selected);
+  font-weight: 600;
+}
+/* The focused row has real DOM focus (roving tabindex), so :focus-visible is enough. */
+.rvtv-tree [role="treeitem"]:focus-visible {
+  outline: 2px solid var(--rvtv-accent);
+  outline-offset: -2px;
+}
+
+/* Disabled rows: `data-disabled` and `aria-disabled="true"` are set together. */
+.rvtv-tree [role="treeitem"][aria-disabled="true"] {
+  color: var(--rvtv-muted);
+  cursor: not-allowed;
+}
+
+/* Expand/collapse toggle (`aria-expanded` exists only on rows that have children). */
+.rvtv-tree [data-toggle] {
+  color: #6b7280;
+  text-align: center;
+}
+
+/* Search highlight (the library wraps matches in <mark> unless renderNode is used). */
+.rvtv-tree mark {
+  background: #fde68a;
+  color: inherit;
+  border-radius: 2px;
+}
+
+/* Drag: the source row stays in the tree while the overlay follows the pointer. */
+.rvtv-tree [role="treeitem"][data-dragging] {
+  opacity: 0.4;
+}
+.rvtv-tree [role="treeitem"][data-drag-disabled] {
+  cursor: default;
+}
+[data-drag-overlay] {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: #fff;
+  border: 1px solid #2563eb;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.15);
+  font: 14px/1.4 system-ui, sans-serif;
+}
+
+/* Drop indicator: the wrapper carries the data-attributes, `renderDropIndicator` supplies the line. */
+.rvtv-drop-line {
+  height: 2px;
+  margin-top: -1px;
+  border-radius: 1px;
+  background: var(--rvtv-accent, #2563eb);
+}
+[data-drop-indicator][data-depth-clamped="true"] .rvtv-drop-line {
+  background: var(--rvtv-warn, #f59e0b);
+}
+
+/* Context menu (rendered next to the tree, `position: fixed` inline). */
+[data-tree-context-menu] {
+  min-width: 10rem;
+  padding: 4px 0;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.15);
+  font: 14px/1.4 system-ui, sans-serif;
+  outline: none;
+}
+[data-tree-context-menu] [role="menuitem"] {
+  padding: 4px 12px;
+  cursor: pointer;
+  outline: none;
+}
+[data-tree-context-menu] [role="menuitem"]:hover,
+[data-tree-context-menu] [role="menuitem"]:focus {
+  background: #dbeafe;
+}
+[data-tree-context-menu] [role="menuitem"][aria-disabled="true"] {
+  color: #9ca3af;
+  cursor: not-allowed;
+}
