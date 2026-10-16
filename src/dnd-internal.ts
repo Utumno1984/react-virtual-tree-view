@@ -12,7 +12,14 @@ export interface DragRowProps extends HTMLAttributes<HTMLDivElement> {
  * Resolves the drop target for a pointer position in viewport coordinates, `dx` px to the
  * right of where the drag started (internal). `null` when the pointer is outside the tree.
  */
-export type DropResolver = (x: number, y: number, activeId: TreeId, dx: number) => DropTarget | null;
+export type DropResolver = (
+  x: number,
+  y: number,
+  activeId: TreeId,
+  dx: number,
+  /** Height of the dragged subtree, computed once when the drag starts. */
+  subtreeHeight?: number,
+) => DropTarget | null;
 
 /** Where the drop indicator is drawn, in tree coordinates. */
 export interface DropPreview {
@@ -54,6 +61,8 @@ export function createPreviewStore(): PreviewStore {
 export interface TreeDndAdapter {
   /** Id of the node being dragged; its descendants are hidden meanwhile. */
   activeId: TreeId | null;
+  /** Maximum depth a drop can reach (root = 0); `undefined` = no limit. */
+  maxDepth?: number;
   /** Replaces the row `<div>`; registers the row as a draggable. */
   RowShell: ComponentType<DragRowProps>;
   /** The tree assigns its pointer-to-target resolver here on every commit. */

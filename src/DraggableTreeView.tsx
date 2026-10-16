@@ -4,9 +4,9 @@ import { DndContext, DragOverlay, PointerSensor, useDraggable, useSensor, useSen
 import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import type { DragRowProps, DropResolver, TreeDndAdapter } from "./dnd-internal";
 import { createPreviewStore } from "./dnd-internal";
-import { findDuplicateIds, moveNode } from "./tree-utils";
+import { findDuplicateIds, findNodeById, getSubtreeHeight, getTreeHeight, moveNode } from "./tree-utils";
 import type { DropTarget, TreeId } from "./tree-utils";
-import { TreeViewWithDnd } from "./TreeView";
+import { TreeViewWithDnd, isDevelopment } from "./TreeView";
 import type { DraggableTreeViewProps, TreeViewHandle } from "./types";
 
 /** Pixels the pointer must travel before a press becomes a drag (so clicks still work). */
@@ -34,7 +34,7 @@ const renderOverlay: TreeDndAdapter["renderOverlay"] = (content) => (
 );
 
 function DraggableTreeViewInner<T = unknown>(
-  { onTreeChange, renderDropIndicator, ...props }: DraggableTreeViewProps<T>,
+  { onTreeChange, renderDropIndicator, maxDepth: maxDepthProp, ...props }: DraggableTreeViewProps<T>,
   ref: ForwardedRef<TreeViewHandle>,
 ) {
   const [activeId, setActiveId] = useState<TreeId | null>(null);
@@ -47,18 +47,44 @@ function DraggableTreeViewInner<T = unknown>(
   const pointer = useRef({ x: 0, y: 0 });
   // Where the pointer was when the drag started: the horizontal offset sets the depth.
   const origin = useRef({ x: 0, y: 0 });
+  // Height of the dragged subtree, computed once per drag (on start) and reused on every move.
+  const subtreeHeight = useRef<number | undefined>(undefined);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: ACTIVATION_DISTANCE } }),
   );
 
-  const onDragStart = useCallback(({ active, activatorEvent }: DragStartEvent) => {
-    const event = activatorEvent as Partial<PointerEvent>;
-    pointer.current = { x: event.clientX ?? 0, y: event.clientY ?? 0 };
-    origin.current = pointer.current;
-    setActiveId(active.id);
-  }, []);
-
   const { data } = props;
+  // Negative or non-integer limits are a mistake: warn (development) and apply no limit.
+  const maxDepthValid =
+    maxDepthProp === undefined || (Number.isInteger(maxDepthProp) && maxDepthProp >= 0);
+  const maxDepth = maxDepthValid ? maxDepthProp : undefined;
+  const dataRef = useRef(data);
+  dataRef.current = data;
+  useEffect(() => {
+    if (!isDevelopment()) return;
+    if (!maxDepthValid) {
+      console.warn(
+        `[react-virtual-tree-view] Invalid maxDepth: it must be a non-negative integer, got ${String(maxDepthProp)}. No depth limit is applied.`,
+      );
+    } else if (maxDepth !== undefined && getTreeHeight(dataRef.current) > maxDepth) {
+      console.warn(
+        `[react-virtual-tree-view] data already exceeds maxDepth (${maxDepth}). It is shown as is; the limit only applies to new drops.`,
+      );
+    }
+  }, [maxDepthValid, maxDepthProp, maxDepth]);
+
+  const onDragStart = useCallback(
+    ({ active, activatorEvent }: DragStartEvent) => {
+      const event = activatorEvent as Partial<PointerEvent>;
+      pointer.current = { x: event.clientX ?? 0, y: event.clientY ?? 0 };
+      origin.current = pointer.current;
+      const node = maxDepth === undefined ? undefined : findNodeById(dataRef.current, active.id);
+      subtreeHeight.current = node ? getSubtreeHeight(node) : undefined;
+      setActiveId(active.id);
+    },
+    [maxDepth],
+  );
+
   // moveNode addresses nodes by id: with duplicates a move could drop sibling nodes, so no
   // move is reported and no indicator is shown (it would promise a drop that never happens).
   const hasDuplicateIds = useMemo(() => findDuplicateIds(data).length > 0, [data]);
@@ -70,7 +96,7 @@ function DraggableTreeViewInner<T = unknown>(
     let last: DropTarget | null | undefined;
     const refresh = () => {
       const { x, y } = pointer.current;
-      const target = resolverRef.current?.(x, y, activeId, x - origin.current.x) ?? null;
+      const target = resolverRef.current?.(x, y, activeId, x - origin.current.x, subtreeHeight.current) ?? null;
       if (target === last) return;
       last = target;
       previewStore.set(target ? { projection: target.projection, slot: target.slot } : null);
@@ -92,7 +118,7 @@ function DraggableTreeViewInner<T = unknown>(
       setActiveId(null);
       if (hasDuplicateIds) return;
       const { x, y } = pointer.current;
-      const target = resolverRef.current?.(x, y, active.id, x - origin.current.x);
+      const target = resolverRef.current?.(x, y, active.id, x - origin.current.x, subtreeHeight.current);
       if (!target || target.isNoop) return;
       const result = moveNode(data, active.id, target.parentId, target.index);
       if (result.tree === data) return;
@@ -112,6 +138,7 @@ function DraggableTreeViewInner<T = unknown>(
   const dnd = useMemo<TreeDndAdapter>(
     () => ({
       activeId,
+      maxDepth,
       RowShell: DraggableRow,
       resolverRef,
       expandRef,
@@ -119,7 +146,7 @@ function DraggableTreeViewInner<T = unknown>(
       renderDropIndicator,
       renderOverlay,
     }),
-    [activeId, previewStore, renderDropIndicator],
+    [activeId, maxDepth, previewStore, renderDropIndicator],
   );
 
   return (

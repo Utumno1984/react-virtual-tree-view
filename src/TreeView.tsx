@@ -29,7 +29,7 @@ const DEFAULT_INDENTATION = 24;
 const DEFAULT_ROW_HEIGHT = 32;
 const DEFAULT_OVERSCAN = 5;
 
-function isDevelopment(): boolean {
+export function isDevelopment(): boolean {
   // `process.env.NODE_ENV` must stay a literal expression: bundlers (Vite, webpack)
   // replace exactly that text, and `process` itself does not exist in the browser.
   try {
@@ -300,12 +300,13 @@ function TreeViewInner<T = unknown>(
   // Drop resolution happens once, on release (not on every pointermove): pointer position
   // -> row under it (fixed row height) -> same-parent target.
   const resolverRef = dnd?.resolverRef;
+  const maxDepth = dnd?.maxDepth;
   useEffect(() => {
     if (!resolverRef) return;
     // Rebuilt with `rows`, so the cache never outlives the layout it was computed for.
     const cache = createProjectionCache<DropTarget | null, TreeId>();
     let flat: FlattenedNode<T>[] | null = null;
-    resolverRef.current = (x, y, activeId, dx) => {
+    resolverRef.current = (x, y, activeId, dx, subtreeHeight) => {
       const el = containerRef.current;
       const content = contentRef.current;
       if (search || !el || !content || rows.length === 0) return null;
@@ -321,13 +322,13 @@ function TreeViewInner<T = unknown>(
       const steps = Math.round(dx / indentation);
       return cache.get(activeId, overIndex, steps, () => {
         flat ??= rows.map((row) => row.item);
-        return getDropTarget(flat, activeId, overIndex, dx, indentation);
+        return getDropTarget(flat, activeId, overIndex, dx, indentation, maxDepth, subtreeHeight);
       });
     };
     return () => {
       resolverRef.current = null;
     };
-  }, [resolverRef, rows, rowHeight, search, indentation]);
+  }, [resolverRef, rows, rowHeight, search, indentation, maxDepth]);
 
   const expandRef = dnd?.expandRef;
   useEffect(() => {

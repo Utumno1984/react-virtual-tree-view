@@ -70,6 +70,26 @@ export function getSubtreeHeight<T>(node: TreeNode<T>): number {
   return max;
 }
 
+/** First node (pre-order) with the given id, or `undefined`. O(n). */
+export function findNodeById<T>(tree: TreeNode<T>[], id: TreeId): TreeNode<T> | undefined {
+  const stack: TreeNode<T>[] = [];
+  for (let i = tree.length - 1; i >= 0; i--) stack.push(tree[i]!);
+  while (stack.length > 0) {
+    const node = stack.pop()!;
+    if (node.id === id) return node;
+    const children = node.children;
+    if (children) for (let i = children.length - 1; i >= 0; i--) stack.push(children[i]!);
+  }
+  return undefined;
+}
+
+/** Height of the tallest root subtree (an empty tree or a flat list is 0). */
+export function getTreeHeight<T>(tree: TreeNode<T>[]): number {
+  let max = 0;
+  for (const node of tree) max = Math.max(max, getSubtreeHeight(node));
+  return max;
+}
+
 /**
  * Parent id for the item placed at `overIndex` of `flattened` (the list as it
  * will be after the move) when it sits at `depth`. `null` means root.
@@ -135,6 +155,7 @@ function projectAtSlot<T>(
   dragOffset: number,
   indentationWidth: number,
   maxDepth?: number,
+  subtreeHeight?: number,
 ): Projection {
   const active = moved[insertAt]!;
   const previous = moved[insertAt - 1];
@@ -147,7 +168,7 @@ function projectAtSlot<T>(
   let upper = prevMax;
   let clamped = false;
   if (maxDepth !== undefined) {
-    const allowed = maxDepth - getSubtreeHeight(active.node);
+    const allowed = maxDepth - (subtreeHeight ?? getSubtreeHeight(active.node));
     if (neighbourBound > allowed) clamped = true;
     upper = Math.min(upper, allowed);
   }
@@ -184,7 +205,10 @@ export interface DropTarget {
  * the depth (see `getProjection`), so a drop can reorder, nest under the previous row or
  * move up a level. The row under the pointer is the insertion point (before it when moving
  * up, after it and its visible subtree when moving down), whatever its parent: a node can
- * land between the children of another open parent. Returns `null` for unknown ids / out-of-range rows.
+ * land between the children of another open parent. With `maxDepth` the projected depth is
+ * cut so that neither the node nor its deepest descendant exceeds it (`projection.clamped`);
+ * pass `subtreeHeight` (see `getSubtreeHeight`) to avoid recomputing it on every call.
+ * Returns `null` for unknown ids / out-of-range rows.
  */
 export function getDropTarget<T>(
   flattened: readonly FlattenedNode<T>[],
@@ -193,6 +217,7 @@ export function getDropTarget<T>(
   dragOffset: number,
   indentationWidth: number,
   maxDepth?: number,
+  subtreeHeight?: number,
 ): DropTarget | null {
   const activeIndex = flattened.findIndex((n) => n.id === activeId);
   const active = flattened[activeIndex];
@@ -214,7 +239,14 @@ export function getDropTarget<T>(
   const without = flattened.slice(0, activeIndex).concat(flattened.slice(activeIndex + 1));
   const insertAt = slot > activeIndex ? slot - 1 : slot;
   const moved = without.slice(0, insertAt).concat(active, without.slice(insertAt));
-  const projection = projectAtSlot(moved, insertAt, dragOffset, indentationWidth, maxDepth);
+  const projection = projectAtSlot(
+    moved,
+    insertAt,
+    dragOffset,
+    indentationWidth,
+    maxDepth,
+    subtreeHeight,
+  );
 
   const previous = moved[insertAt - 1];
   let index = 0;
