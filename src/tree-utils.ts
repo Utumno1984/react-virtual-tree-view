@@ -145,19 +145,47 @@ export function getProjection<T>(
     insertAt = overFull > activeIndex ? overWithout + 1 : overWithout;
   }
   const moved = without.slice(0, insertAt).concat(active, without.slice(insertAt));
-  return projectAtSlot(moved, insertAt, dragOffset, indentationWidth, maxDepth);
+  return projectAtSlot(moved, insertAt, dragOffset, indentationWidth, maxDepth).projection;
 }
 
-/** Projection of the item at `moved[insertAt]` (the dragged node in its new place). */
+/**
+ * Projection of the item at `moved[initialInsertAt]` (the dragged node in its new place).
+ * With `maxDepth`, if the rows that follow are deeper than the node can go (its subtree
+ * would exceed the limit), the slot moves down past those rows: the nearest slot that
+ * respects the limit. Returns the (possibly rearranged) list and the final slot.
+ */
 function projectAtSlot<T>(
-  moved: readonly FlattenedNode<T>[],
-  insertAt: number,
+  initial: readonly FlattenedNode<T>[],
+  initialInsertAt: number,
   dragOffset: number,
   indentationWidth: number,
   maxDepth?: number,
   subtreeHeight?: number,
-): Projection {
+): { projection: Projection; moved: readonly FlattenedNode<T>[]; insertAt: number } {
+  let moved = initial;
+  let insertAt = initialInsertAt;
   const active = moved[insertAt]!;
+  let allowed = Infinity;
+  let rawAllowed = Infinity;
+  if (maxDepth !== undefined) {
+    rawAllowed = maxDepth - (subtreeHeight ?? getSubtreeHeight(active.node));
+    // A subtree taller than the limit goes to the shallowest depth, no exception.
+    allowed = Math.max(0, rawAllowed);
+    let skip = 0;
+    // Rows already deeper than maxDepth (non-conforming data) are left alone: their depth wins.
+    const tooDeep = (d: number) => d > allowed && d <= maxDepth;
+    while (tooDeep(moved[insertAt + 1 + skip]?.depth ?? 0)) skip++;
+    if (skip > 0) {
+      moved = moved
+        .slice(0, insertAt)
+        .concat(
+          moved.slice(insertAt + 1, insertAt + 1 + skip),
+          active,
+          moved.slice(insertAt + 1 + skip),
+        );
+      insertAt += skip;
+    }
+  }
   const previous = moved[insertAt - 1];
   const next = moved[insertAt + 1];
   const prevMax = previous ? previous.depth + 1 : 0;
@@ -168,19 +196,22 @@ function projectAtSlot<T>(
   let upper = prevMax;
   let clamped = false;
   if (maxDepth !== undefined) {
-    const allowed = maxDepth - (subtreeHeight ?? getSubtreeHeight(active.node));
-    if (neighbourBound > allowed) clamped = true;
+    if (neighbourBound > rawAllowed || insertAt !== initialInsertAt) clamped = true;
     upper = Math.min(upper, allowed);
   }
   const effectiveMax = Math.max(upper, minDepth);
   const depth = Math.min(Math.max(projected, minDepth), effectiveMax);
 
   return {
-    depth,
-    minDepth,
-    maxDepth: effectiveMax,
-    parentId: calculateNewParent(moved, insertAt, depth),
-    clamped,
+    projection: {
+      depth,
+      minDepth,
+      maxDepth: effectiveMax,
+      parentId: calculateNewParent(moved, insertAt, depth),
+      clamped,
+    },
+    moved,
+    insertAt,
   };
 }
 
@@ -237,16 +268,19 @@ export function getDropTarget<T>(
   }
 
   const without = flattened.slice(0, activeIndex).concat(flattened.slice(activeIndex + 1));
-  const insertAt = slot > activeIndex ? slot - 1 : slot;
-  const moved = without.slice(0, insertAt).concat(active, without.slice(insertAt));
-  const projection = projectAtSlot(
-    moved,
-    insertAt,
+  const initialInsertAt = slot > activeIndex ? slot - 1 : slot;
+  const initial = without.slice(0, initialInsertAt).concat(active, without.slice(initialInsertAt));
+  const projected = projectAtSlot(
+    initial,
+    initialInsertAt,
     dragOffset,
     indentationWidth,
     maxDepth,
     subtreeHeight,
   );
+  const { projection, moved, insertAt } = projected;
+  // The slot may have moved past rows too deep for the limit (see `projectAtSlot`).
+  slot = insertAt > activeIndex ? insertAt + 1 : insertAt;
 
   const previous = moved[insertAt - 1];
   let index = 0;

@@ -139,3 +139,38 @@ describe("getDropTarget with maxDepth", () => {
     expect(truth.projection.clamped).toBe(true);
   });
 });
+
+describe("getDropTarget with maxDepth: slot between rows already at the limit", () => {
+  // a
+  // b
+  //   c
+  //     c1      <- deepest conforming level (maxDepth 2)
+  // docs (height 1, collapsed while dragged)
+  //   cv
+  const t = (): TreeNode[] => [n("a"), n("b", [n("c", [n("c1")])]), n("docs", [n("cv")])];
+  const f = () => flattenTree(t(), new Set(["b", "c"]));
+
+  it("moves the slot past the rows that are too deep instead of exceeding maxDepth", () => {
+    const rows = f();
+    const target = getDropTarget(rows, "docs", at("c1", rows), 0, 24, 2, 1)!;
+    // c1 (depth 2) cannot follow a node of height 1: docs lands after it, at depth 0
+    expect(target.projection).toMatchObject({ depth: 0, parentId: null, clamped: true });
+    expect(target.slot).toBeGreaterThan(at("c1", rows));
+    const moved = moveNode(t(), "docs", target.parentId, target.index).tree;
+    expect(treeDepth(moved)).toBeLessThanOrEqual(2);
+  });
+
+  it("the slot only moves when the limit requires it", () => {
+    const rows = f();
+    const target = getDropTarget(rows, "docs", at("c", rows), 0, 24, 2, 1)!;
+    expect(target.slot).toBe(at("c", rows));
+    expect(target.projection.depth).toBe(1);
+  });
+
+  it("without maxDepth the slot is untouched", () => {
+    const rows = f();
+    const target = getDropTarget(rows, "docs", at("c1", rows), 0, 24)!;
+    expect(target.slot).toBe(at("c1", rows));
+    expect(target.projection.clamped).toBe(false);
+  });
+});

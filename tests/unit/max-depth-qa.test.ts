@@ -29,7 +29,7 @@ function build(total: number, rand: () => number, cap = Infinity): TreeNode[] {
   return roots;
 }
 
-function depthOf(tree: TreeNode[], id: string, depth = 0): number {
+function depthOf(tree: TreeNode[], id: string | number, depth = 0): number {
   for (const n of tree) {
     if (n.id === id) return depth;
     const d = depthOf(n.children ?? [], id, depth + 1);
@@ -38,8 +38,8 @@ function depthOf(tree: TreeNode[], id: string, depth = 0): number {
   return -1;
 }
 
-function expandAll(tree: TreeNode[]): Set<string> {
-  const expanded = new Set<string>();
+function expandAll(tree: TreeNode[]): Set<string | number> {
+  const expanded = new Set<string | number>();
   const mark = (ns: TreeNode[]) =>
     ns.forEach((n) => {
       if (n.children) {
