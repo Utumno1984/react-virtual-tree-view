@@ -117,6 +117,16 @@ export interface DraggableTreeViewProps<T = unknown> extends TreeViewProps<T> {
    */
   maxDepth?: number;
   /**
+   * Scroll the tree while dragging with the pointer near its top/bottom edge, faster the closer
+   * the pointer is to the edge. Default `true`; `false` disables it (dnd-kit's own auto-scroll
+   * is always off, so there is never a double scroll).
+   */
+  autoScroll?: boolean;
+  /** Height in px of the auto-scroll band at each edge of the tree. Default 40. */
+  autoScrollThreshold?: number;
+  /** Maximum auto-scroll speed in px per frame, reached at the very edge. Default 20. */
+  autoScrollMaxSpeed?: number;
+  /**
    * Content of the drop indicator shown while dragging, for styling it. It is wrapped in an
    * element (`data-drop-indicator`, `data-projected-depth`) already positioned between the two
    * rows and indented to `projection.depth * indentation`. Defaults to a minimal line.

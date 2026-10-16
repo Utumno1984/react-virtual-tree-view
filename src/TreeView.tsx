@@ -330,6 +330,15 @@ function TreeViewInner<T = unknown>(
     };
   }, [resolverRef, rows, rowHeight, search, indentation, maxDepth]);
 
+  const scrollElRef = dnd?.scrollElRef;
+  useEffect(() => {
+    if (!scrollElRef) return;
+    scrollElRef.current = containerRef.current;
+    return () => {
+      scrollElRef.current = null;
+    };
+  }, [scrollElRef]);
+
   const expandRef = dnd?.expandRef;
   useEffect(() => {
     if (!expandRef) return;

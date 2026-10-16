@@ -8,6 +8,11 @@ import { findDuplicateIds, findNodeById, getSubtreeHeight, getTreeHeight, moveNo
 import type { DropTarget, TreeId } from "./tree-utils";
 import { TreeViewWithDnd, isDevelopment } from "./TreeView";
 import type { DraggableTreeViewProps, TreeViewHandle } from "./types";
+import {
+  DEFAULT_AUTO_SCROLL_MAX_SPEED,
+  DEFAULT_AUTO_SCROLL_THRESHOLD,
+  useAutoScroll,
+} from "./useAutoScroll";
 
 /** Pixels the pointer must travel before a press becomes a drag (so clicks still work). */
 const ACTIVATION_DISTANCE = 5;
@@ -34,12 +39,23 @@ const renderOverlay: TreeDndAdapter["renderOverlay"] = (content) => (
 );
 
 function DraggableTreeViewInner<T = unknown>(
-  { onTreeChange, renderDropIndicator, maxDepth: maxDepthProp, ...props }: DraggableTreeViewProps<T>,
+  {
+    onTreeChange,
+    renderDropIndicator,
+    maxDepth: maxDepthProp,
+    autoScroll = true,
+    autoScrollThreshold = DEFAULT_AUTO_SCROLL_THRESHOLD,
+    autoScrollMaxSpeed = DEFAULT_AUTO_SCROLL_MAX_SPEED,
+    ...props
+  }: DraggableTreeViewProps<T>,
   ref: ForwardedRef<TreeViewHandle>,
 ) {
   const [activeId, setActiveId] = useState<TreeId | null>(null);
   const resolverRef = useRef<DropResolver | null>(null);
   const expandRef = useRef<((id: TreeId) => void) | null>(null);
+  const scrollElRef = useRef<HTMLElement | null>(null);
+  // Re-resolves the drop target for the current pointer (set by the drag effect below).
+  const refreshRef = useRef<(() => void) | null>(null);
   const [previewStore] = useState(createPreviewStore);
   // Last known pointer position (viewport coordinates) while dragging. dnd-kit's `delta`
   // includes the scroll that happened during the drag, which the drop resolver already
@@ -106,12 +122,27 @@ function DraggableTreeViewInner<T = unknown>(
       refresh();
     };
     refresh();
+    refreshRef.current = refresh;
     document.addEventListener("pointermove", onMove);
     return () => {
       document.removeEventListener("pointermove", onMove);
+      refreshRef.current = null;
       previewStore.set(null);
     };
   }, [activeId, previewStore, hasDuplicateIds]);
+
+  // After an auto-scroll step the rows under the (still) pointer changed: refresh the
+  // projection. Called at most once per frame, and only if the container really moved.
+  const onAutoScrolled = useCallback(() => refreshRef.current?.(), []);
+  useAutoScroll({
+    active: activeId !== null,
+    enabled: autoScroll,
+    containerRef: scrollElRef,
+    pointerRef: pointer,
+    threshold: autoScrollThreshold,
+    maxSpeed: autoScrollMaxSpeed,
+    onScrolled: onAutoScrolled,
+  });
 
   const onDragEnd = useCallback(
     ({ active }: DragEndEvent) => {
@@ -142,6 +173,7 @@ function DraggableTreeViewInner<T = unknown>(
       RowShell: DraggableRow,
       resolverRef,
       expandRef,
+      scrollElRef,
       previewStore,
       renderDropIndicator,
       renderOverlay,
@@ -152,7 +184,7 @@ function DraggableTreeViewInner<T = unknown>(
   return (
     <DndContext
       sensors={sensors}
-      // Auto-scroll is a later feature; the drop math assumes a container that stays put.
+      // dnd-kit's own auto-scroll stays off: `useAutoScroll` scrolls the tree (no double scroll).
       autoScroll={false}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}

@@ -67,6 +67,8 @@ export interface TreeDndAdapter {
   RowShell: ComponentType<DragRowProps>;
   /** The tree assigns its pointer-to-target resolver here on every commit. */
   resolverRef: MutableRefObject<DropResolver | null>;
+  /** The tree assigns its scroll container here (used by the auto-scroll loop). */
+  scrollElRef: MutableRefObject<HTMLElement | null>;
   /** The tree assigns a function that expands a node (state + `onExpandedChange`). */
   expandRef: MutableRefObject<((id: TreeId) => void) | null>;
   /** Live projection shown by the drop indicator. */
