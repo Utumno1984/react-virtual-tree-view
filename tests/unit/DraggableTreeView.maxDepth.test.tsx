@@ -8,7 +8,11 @@ import * as treeUtils from "../../src/tree-utils";
 // Wrap getSubtreeHeight in a spy (an ES module namespace cannot be spied on directly).
 vi.mock("../../src/tree-utils", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../src/tree-utils")>();
-  return { ...actual, getSubtreeHeight: vi.fn(actual.getSubtreeHeight) };
+  return {
+    ...actual,
+    getSubtreeHeight: vi.fn(actual.getSubtreeHeight),
+    getDropTarget: vi.fn(actual.getDropTarget),
+  };
 });
 
 const tree: TreeNode[] = [
@@ -37,6 +41,7 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   vi.mocked(treeUtils.getSubtreeHeight).mockClear();
+  vi.mocked(treeUtils.getDropTarget).mockClear();
 });
 
 const rowEl = (id: string) => document.querySelector(`[data-node-id="${id}"]`) as HTMLElement;
@@ -70,6 +75,19 @@ describe("DraggableTreeView maxDepth", () => {
     expect(spy).toHaveBeenCalledTimes(1);
     for (let i = 0; i < 20; i++) move(100 + (i % 4) * IND, y - (i % 3) * ROW);
     expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes the cached subtree height to every drop-target resolution", () => {
+    render(
+      <DraggableTreeView data={tree} defaultExpandedIds={["p", "B"]} maxDepth={3} height={400} rowHeight={ROW} indentation={IND} />,
+    );
+    const resolve = vi.mocked(treeUtils.getDropTarget);
+    resolve.mockClear();
+    // rows: p, A, B, B1, C, q -> drag B (height 1: it has one level of children)
+    const y = startDrag("B", 2);
+    for (let i = 0; i < 10; i++) move(100 + (i % 4) * IND, y + (i % 3) * ROW);
+    expect(resolve.mock.calls.length).toBeGreaterThan(5);
+    for (const call of resolve.mock.calls) expect(call[6]).toBe(1);
   });
 
   it("does not compute any height when there is no maxDepth", () => {
