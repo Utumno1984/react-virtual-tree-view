@@ -20,7 +20,7 @@ export interface Projection {
   /** Maximum depth allowed (previous node and `maxDepth` option, never below `minDepth`). */
   maxDepth: number;
   parentId: TreeId | null;
-  /** True when the projected depth was cut because of the `maxDepth` option. */
+  /** True when `maxDepth` affected the projection, including when it could not be honoured. */
   clamped: boolean;
 }
 
@@ -116,11 +116,15 @@ export function calculateNewParent<T>(
  * Returns `null` if the active or over id is not in the list.
  *
  * Known limit with non-conforming data: if the list already contains rows deeper than
- * `maxDepth` (e.g. `a > b > c > [d, e]` with `maxDepth = 2`), a drop between two such rows
- * is forced to at least their depth (`minDepth`), so the result can stay beyond `maxDepth`.
- * The node is not relocated: the projection only reports it with `clamped: true`. Callers
- * must therefore check `clamped` also when the starting data does not respect `maxDepth`,
- * not just for shallow new drops.
+ * `maxDepth` (e.g. `a > b > c > [d, e]` with `maxDepth = 2`), a drop just above a row that is
+ * already deeper than `maxDepth` is forced to at least that depth (`minDepth`), so the result
+ * can stay beyond `maxDepth`: the slot is not moved past those rows. `clamped` is `true` there
+ * but also for an ordinary cut that does honour the limit, so it is necessary, not sufficient.
+ * To detect the overshoot during a drag use
+ * `projection.depth + getSubtreeHeight(node) > maxDepth` (with the `maxDepth` you passed, not
+ * `projection.maxDepth`, which is raised to `minDepth`). In `onTreeChange`, where the event has
+ * no `clamped`, use `getAncestorIds(tree, event.nodeId).length + getSubtreeHeight(node) > maxDepth`
+ * and ignore the new tree if true.
  */
 export function getProjection<T>(
   flattened: readonly FlattenedNode<T>[],

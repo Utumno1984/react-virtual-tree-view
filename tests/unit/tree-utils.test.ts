@@ -187,12 +187,13 @@ describe("getProjection", () => {
     expect(p).toMatchObject({ depth: 2, minDepth: 2, clamped: true });
   });
 
-  it("non-conforming initial data: a drop between rows already deeper than maxDepth is flagged clamped but not relocated (known limit, #26)", () => {
+  it("non-conforming initial data: a drop just above a row already deeper than maxDepth is flagged clamped, the slot is not moved past it (known limit, #26)", () => {
     // a > b > c > [d, e] is depth 3 with maxDepth 2; "l" is dropped between d and e.
     const deep = flattenTree([n("a", [n("b", [n("c", [n("d"), n("e")])])]), n("l")], new Set(["a", "b", "c"]));
     const p = getProjection(deep, "l", "e", 0, IND, 2)!;
-    // The neighbours force depth 3 > maxDepth: the node is not moved elsewhere, the caller
-    // must check `clamped` (here true) to know the limit could not be honoured.
+    // The row below ("e") is already deeper than maxDepth, so the slot is not moved past it
+    // and depth 3 > maxDepth. `clamped` is true but is also true for ordinary cuts; the
+    // overshoot is detected with depth + subtree height > maxDepth (here 3 + 0 > 2).
     expect(p).toMatchObject({ depth: 3, minDepth: 3, parentId: "c", clamped: true });
   });
 

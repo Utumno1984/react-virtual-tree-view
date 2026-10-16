@@ -157,10 +157,14 @@ function DepthLimitedTree() {
 }
 ```
 
-Known limit: if `data` already has nodes deeper than `maxDepth`, a drop between two such rows
-cannot go shallower than them and may end up beyond the limit. The projection is flagged
-`clamped: true` (`data-depth-clamped` on the drop indicator) but the node is not relocated, so
-check `clamped` even when the starting data does not respect `maxDepth`.
+Known limit: if `data` already has nodes deeper than `maxDepth`, a drop just above a row that is
+already deeper than `maxDepth` cannot go shallower than it and may end up beyond the limit (the
+slot is not moved past those rows). `clamped` is `true` there, but also for ordinary cuts that
+honour the limit, so it is not enough on its own. During a drag, detect the overshoot with
+`projection.depth + getSubtreeHeight(node) > maxDepth` (your `maxDepth`, not
+`projection.maxDepth`). In `onTreeChange`, whose event has no `clamped`, use
+`getAncestorIds(tree, event.nodeId).length + getSubtreeHeight(node) > maxDepth` and ignore the
+new tree if true.
 
 ### Context menu
 

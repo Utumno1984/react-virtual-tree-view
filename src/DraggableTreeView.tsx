@@ -235,10 +235,14 @@ ForwardedDraggableTreeView.displayName = "DraggableTreeView";
  * `onTreeChange` is called, even if the consumer ignores the new tree.
  *
  * `maxDepth` known limit: if the initial `data` already has nodes deeper than `maxDepth`, a drop
- * between two such rows cannot go shallower than them and may end up beyond the limit. The
- * projection is flagged `clamped: true` (`data-depth-clamped` on the drop indicator) but the
- * node is not relocated, so check `clamped` even when the starting data does not respect
- * `maxDepth`, not only for shallow new drops.
+ * just above a row that is already deeper than `maxDepth` cannot go shallower than it and may
+ * end up beyond the limit (the slot is not moved past those rows). `clamped` is `true` there
+ * (`data-depth-clamped` on the drop indicator) but also for ordinary cuts that honour the
+ * limit, so it is not sufficient. During a drag detect the overshoot with
+ * `projection.depth + getSubtreeHeight(node) > maxDepth` (your `maxDepth`, not
+ * `projection.maxDepth`); in `onTreeChange`, whose event has no `clamped`, with
+ * `getAncestorIds(tree, event.nodeId).length + getSubtreeHeight(node) > maxDepth`, ignoring
+ * the new tree if true.
  */
 export const DraggableTreeView = ForwardedDraggableTreeView as <T = unknown>(
   props: DraggableTreeViewProps<T> & { ref?: ForwardedRef<TreeViewHandle> },
