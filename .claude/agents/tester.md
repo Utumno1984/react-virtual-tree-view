@@ -20,7 +20,9 @@ quello che chiede il ticket, dal punto di vista di chi usa la libreria.
    `tests/`: non modificare il codice applicativo in `src/`.
 3. Esegui, nell'ordine:
    - `npm run check` (lint, tipi, build, unit test);
-   - `npm run build-storybook` (la build statica deve riuscire senza errori);
+   - `npm run build-storybook:e2e` (build statica in modalità e2e: deve riuscire senza errori;
+     con `build-storybook`, il build di produzione, la suite smoke fallisce apposta con un
+     messaggio chiaro — non è un difetto, è il controllo che si stia usando il build giusto);
    - `npm run test:e2e` (**intera** suite end-to-end, non solo i test nuovi, contro
      Storybook o il bundle buildato — leggi come è configurato in `playwright.config.ts`);
    - **smoke test manuale/scriptato**: albero con molti nodi (>500, generato), drag con

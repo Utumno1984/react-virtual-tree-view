@@ -10,6 +10,7 @@
       "Bash(npm run test:e2e)",
       "Bash(npm run storybook)",
       "Bash(npm run build-storybook)",
+      "Bash(npm run build-storybook:e2e)",
       "Bash(gh issue list *)",
       "Bash(gh issue view *)",
       "Bash(gh issue create *)",
