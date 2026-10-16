@@ -118,7 +118,11 @@ export interface DraggableTreeViewProps<T = unknown> extends TreeViewProps<T> {
    * a drag the projection is cut so that neither the node nor any descendant goes deeper
    * (the drop is not refused). Must be a non-negative integer; anything else warns in
    * development and means no limit. `data` that already exceeds it is shown as is (with a
-   * development warning): the limit only applies to new drops.
+   * development warning): the limit only applies to new drops. Known limit: a drop between
+   * rows that are already deeper than `maxDepth` cannot go shallower than them, so it can end
+   * up beyond the limit; the projection is flagged `clamped: true` but the node is not
+   * relocated. Check `clamped` (drop indicator `data-depth-clamped`, `projection.clamped`)
+   * even when the starting `data` does not respect `maxDepth`, not only for shallow new drops.
    */
   maxDepth?: number;
   /**

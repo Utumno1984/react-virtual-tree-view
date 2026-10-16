@@ -187,6 +187,15 @@ describe("getProjection", () => {
     expect(p).toMatchObject({ depth: 2, minDepth: 2, clamped: true });
   });
 
+  it("non-conforming initial data: a drop between rows already deeper than maxDepth is flagged clamped but not relocated (known limit, #26)", () => {
+    // a > b > c > [d, e] is depth 3 with maxDepth 2; "l" is dropped between d and e.
+    const deep = flattenTree([n("a", [n("b", [n("c", [n("d"), n("e")])])]), n("l")], new Set(["a", "b", "c"]));
+    const p = getProjection(deep, "l", "e", 0, IND, 2)!;
+    // The neighbours force depth 3 > maxDepth: the node is not moved elsewhere, the caller
+    // must check `clamped` (here true) to know the limit could not be honoured.
+    expect(p).toMatchObject({ depth: 3, minDepth: 3, parentId: "c", clamped: true });
+  });
+
   it("does not treat disabled nodes differently", () => {
     const tree = [n("a", [], { isDisabled: true }), n("b")];
     const f = flattenTree(tree, new Set());

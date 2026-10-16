@@ -157,6 +157,11 @@ function DepthLimitedTree() {
 }
 ```
 
+Known limit: if `data` already has nodes deeper than `maxDepth`, a drop between two such rows
+cannot go shallower than them and may end up beyond the limit. The projection is flagged
+`clamped: true` (`data-depth-clamped` on the drop indicator) but the node is not relocated, so
+check `clamped` even when the starting data does not respect `maxDepth`.
+
 ### Context menu
 
 The library defines no actions: you return them from `items(node)`. Returning `[]` means no menu for

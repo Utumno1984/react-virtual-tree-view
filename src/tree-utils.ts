@@ -114,6 +114,13 @@ export function calculateNewParent<T>(
  * Drop projection (same algorithm as the dnd-kit "tree" example) with an
  * optional `maxDepth` that also accounts for the height of the dragged subtree.
  * Returns `null` if the active or over id is not in the list.
+ *
+ * Known limit with non-conforming data: if the list already contains rows deeper than
+ * `maxDepth` (e.g. `a > b > c > [d, e]` with `maxDepth = 2`), a drop between two such rows
+ * is forced to at least their depth (`minDepth`), so the result can stay beyond `maxDepth`.
+ * The node is not relocated: the projection only reports it with `clamped: true`. Callers
+ * must therefore check `clamped` also when the starting data does not respect `maxDepth`,
+ * not just for shallow new drops.
  */
 export function getProjection<T>(
   flattened: readonly FlattenedNode<T>[],
