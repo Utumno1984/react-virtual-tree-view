@@ -306,15 +306,28 @@ function TreeViewInner<T = unknown>(
     // Rebuilt with `rows`, so the cache never outlives the layout it was computed for.
     const cache = createProjectionCache<DropTarget | null, TreeId>();
     let flat: FlattenedNode<T>[] | null = null;
-    resolverRef.current = (x, y, activeId, dx, subtreeHeight) => {
+    // Offset of the content's top edge from the container's border-box top, at scrollTop 0
+    // (padding/border included); measured again only when the cached container rect changes.
+    let measuredRect: object | null = null;
+    let contentOffset = 0;
+    resolverRef.current = (x, y, activeId, dx, subtreeHeight, geometry) => {
       const el = containerRef.current;
       const content = contentRef.current;
       if (search || !el || !content || rows.length === 0) return null;
-      const rect = el.getBoundingClientRect();
+      const rect = geometry ? geometry.rect : el.getBoundingClientRect();
       if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) return null;
       // Rows are positioned inside the content element, which already moves with the
       // scroll and ignores the container's padding/border.
-      const top = content.getBoundingClientRect().top;
+      let top: number;
+      if (geometry) {
+        if (measuredRect !== rect) {
+          measuredRect = rect;
+          contentOffset = content.getBoundingClientRect().top - rect.top + el.scrollTop;
+        }
+        top = rect.top + contentOffset - geometry.scrollTop;
+      } else {
+        top = content.getBoundingClientRect().top;
+      }
       const overIndex = Math.min(
         rows.length - 1,
         Math.max(0, Math.floor((y - top) / rowHeight)),

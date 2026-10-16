@@ -123,6 +123,53 @@ test.describe("DraggableTreeView auto-scroll", () => {
     await page.mouse.up();
   });
 
+  test("pointer 300 px to the right of the tree, at the height of the band: scrollTop unchanged", async ({
+    page,
+  }) => {
+    await page.goto(story("default"));
+    const box = await treeBox(page);
+    const x = await startDrag(page, "n0");
+    await page.mouse.move(box.x + box.width + 300, box.y + box.height - 6, { steps: 5 });
+    await page.waitForTimeout(400);
+    expect(await scrollTop(page)).toBe(0);
+    // back over the tree: it scrolls again
+    await page.mouse.move(x, box.y + box.height - 6, { steps: 5 });
+    await expect.poll(() => scrollTop(page)).toBeGreaterThan(100);
+    await page.mouse.up();
+  });
+
+  test("pointer far below the tree (beyond the band tolerance): scrollTop unchanged", async ({ page }) => {
+    await page.goto(story("default"));
+    const box = await treeBox(page);
+    const x = await startDrag(page, "n0");
+    await page.mouse.move(x, box.y + box.height + 150, { steps: 5 });
+    await page.waitForTimeout(400);
+    expect(await scrollTop(page)).toBe(0);
+    await page.mouse.up();
+  });
+
+  test("the page scrolls mid-drag: the bands follow the tree", async ({ page }) => {
+    await page.goto(story("tall-page"));
+    const top = await tree(page).evaluate((el) => el.getBoundingClientRect().top + window.scrollY);
+    await page.evaluate((y) => window.scrollTo(0, y), top - 100);
+    const box = await treeBox(page);
+    expect(Math.round(box.y)).toBe(100);
+    const x = await startDrag(page, "n0");
+    await page.mouse.move(x, box.y + box.height - 6, { steps: 5 });
+    await expect.poll(() => scrollTop(page)).toBeGreaterThan(100);
+    // the page scrolls 250 px: the tree moves up and the pointer is now far below it
+    await page.evaluate(() => window.scrollBy(0, 250));
+    await page.waitForTimeout(150); // let the last frames settle
+    const settled = await scrollTop(page);
+    await page.waitForTimeout(400);
+    expect(await scrollTop(page)).toBe(settled);
+    // the bottom band of the moved tree scrolls again
+    const moved = await treeBox(page);
+    await page.mouse.move(x, moved.y + moved.height - 6, { steps: 5 });
+    await expect.poll(() => scrollTop(page)).toBeGreaterThan(settled + 100);
+    await page.mouse.up();
+  });
+
   test("5000 nodes with maxDepth: scrolls and the indicator never exceeds the limit", async ({ page }) => {
     await page.goto(story("many-nodes-nested"));
     const box = await treeBox(page);

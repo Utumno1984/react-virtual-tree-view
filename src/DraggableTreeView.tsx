@@ -2,7 +2,7 @@ import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "r
 import type { ForwardedRef, ReactElement } from "react";
 import { DndContext, DragOverlay, PointerSensor, useDraggable, useSensor, useSensors } from "@dnd-kit/core";
 import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
-import type { DragRowProps, DropResolver, TreeDndAdapter } from "./dnd-internal";
+import type { ContainerGeometry, DragRowProps, DropResolver, TreeDndAdapter } from "./dnd-internal";
 import { createPreviewStore } from "./dnd-internal";
 import { findDuplicateIds, findNodeById, getSubtreeHeight, getTreeHeight, moveNode } from "./tree-utils";
 import type { DropTarget, TreeId } from "./tree-utils";
@@ -54,6 +54,8 @@ function DraggableTreeViewInner<T = unknown>(
   const resolverRef = useRef<DropResolver | null>(null);
   const expandRef = useRef<((id: TreeId) => void) | null>(null);
   const scrollElRef = useRef<HTMLElement | null>(null);
+  // Set by `useAutoScroll` while it runs: cached container rect + scrollTop for the resolver.
+  const geometryRef = useRef<(() => ContainerGeometry) | null>(null);
   // Re-resolves the drop target for the current pointer (set by the drag effect below).
   const refreshRef = useRef<(() => void) | null>(null);
   const [previewStore] = useState(createPreviewStore);
@@ -92,6 +94,8 @@ function DraggableTreeViewInner<T = unknown>(
   const onDragStart = useCallback(
     ({ active, activatorEvent }: DragStartEvent) => {
       const event = activatorEvent as Partial<PointerEvent>;
+      // Known limitation: this is where the press happened. By activation the pointer has
+      // moved a few px (the activation distance); the first `pointermove` corrects it.
       pointer.current = { x: event.clientX ?? 0, y: event.clientY ?? 0 };
       origin.current = pointer.current;
       const node = maxDepth === undefined ? undefined : findNodeById(dataRef.current, active.id);
@@ -112,7 +116,15 @@ function DraggableTreeViewInner<T = unknown>(
     let last: DropTarget | null | undefined;
     const refresh = () => {
       const { x, y } = pointer.current;
-      const target = resolverRef.current?.(x, y, activeId, x - origin.current.x, subtreeHeight.current) ?? null;
+      const target =
+        resolverRef.current?.(
+          x,
+          y,
+          activeId,
+          x - origin.current.x,
+          subtreeHeight.current,
+          geometryRef.current?.(),
+        ) ?? null;
       if (target === last) return;
       last = target;
       previewStore.set(target ? { projection: target.projection, slot: target.slot } : null);
@@ -139,6 +151,7 @@ function DraggableTreeViewInner<T = unknown>(
     enabled: autoScroll,
     containerRef: scrollElRef,
     pointerRef: pointer,
+    geometryRef,
     threshold: autoScrollThreshold,
     maxSpeed: autoScrollMaxSpeed,
     onScrolled: onAutoScrolled,
@@ -149,7 +162,14 @@ function DraggableTreeViewInner<T = unknown>(
       setActiveId(null);
       if (hasDuplicateIds) return;
       const { x, y } = pointer.current;
-      const target = resolverRef.current?.(x, y, active.id, x - origin.current.x, subtreeHeight.current);
+      const target = resolverRef.current?.(
+        x,
+        y,
+        active.id,
+        x - origin.current.x,
+        subtreeHeight.current,
+        geometryRef.current?.(),
+      );
       if (!target || target.isNoop) return;
       const result = moveNode(data, active.id, target.parentId, target.index);
       if (result.tree === data) return;

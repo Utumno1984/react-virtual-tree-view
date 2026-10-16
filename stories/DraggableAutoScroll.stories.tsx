@@ -16,9 +16,11 @@ interface DemoProps {
   autoScrollThreshold?: number;
   autoScrollMaxSpeed?: number;
   maxDepth?: number;
+  /** Surround the tree with spacers so the page itself scrolls. */
+  tallPage?: boolean;
 }
 
-function AutoScrollDemo({ count = 1200, nested = false, ...rest }: DemoProps) {
+function AutoScrollDemo({ count = 1200, nested = false, tallPage = false, ...rest }: DemoProps) {
   const initial = useMemo(
     () => (nested ? generateTree({ count, maxDepth: 3, seed: 7 }) : flatRoots(count)),
     [count, nested],
@@ -27,6 +29,7 @@ function AutoScrollDemo({ count = 1200, nested = false, ...rest }: DemoProps) {
   const [lastEvent, setLastEvent] = useState<TreeChangeEvent | null>(null);
   return (
     <div className="w-80 space-y-2">
+      {tallPage && <div data-testid="spacer-top" style={{ height: 600 }} />}
       <p className="text-sm text-gray-700">
         {count} nodes in a 400 px container: drag a row and hold the pointer near the top or
         bottom edge to scroll.
@@ -46,6 +49,7 @@ function AutoScrollDemo({ count = 1200, nested = false, ...rest }: DemoProps) {
       <pre data-testid="last-event" className="rounded bg-gray-50 p-2 text-xs text-gray-700">
         {lastEvent ? `onTreeChange ${JSON.stringify(lastEvent)}` : "onTreeChange: none yet"}
       </pre>
+      {tallPage && <div style={{ height: 1500 }} />}
     </div>
   );
 }
@@ -77,6 +81,11 @@ export const Disabled: Story = {
 /** A short list (fits in the container): nothing to scroll. */
 export const ShortList: Story = {
   args: { count: 8 },
+};
+
+/** The page is taller than the window: scrolling the page mid-drag moves the bands with the tree. */
+export const TallPage: Story = {
+  args: { tallPage: true },
 };
 
 /** Nested tree of 5000 nodes with `maxDepth`: projection stays consistent while scrolling. */

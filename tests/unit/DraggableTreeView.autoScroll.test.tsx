@@ -158,14 +158,62 @@ describe("DraggableTreeView auto-scroll", () => {
     expect(warns).not.toHaveBeenCalled();
   });
 
-  it("reads the container rect once per drag, not per frame", () => {
+  it("reuses the cached container rect: no container or content rect reads per scrolled frame", () => {
     const { tree } = mount();
-    const spy = vi.fn(() => ({ top: 0, bottom: 400, left: 0, right: 300 }) as DOMRect);
-    tree.getBoundingClientRect = spy;
+    const content = tree.querySelector('[role="none"]') as HTMLElement;
+    const containerSpy = vi.fn(() => ({ top: 0, bottom: 400, left: 0, right: 300 }) as DOMRect);
+    const contentSpy = vi.fn(() => ({ top: -tree.scrollTop, bottom: 0, left: 0, right: 300 }) as DOMRect);
+    tree.getBoundingClientRect = containerSpy;
+    content.getBoundingClientRect = contentSpy;
     startDrag();
-    const afterStart = spy.mock.calls.length;
+    runFrame(); // first scrolled frame: the shared rect and the content offset are measured
+    const scrolledAt = tree.scrollTop;
+    expect(scrolledAt).toBeGreaterThan(0);
+    const containerReads = containerSpy.mock.calls.length;
+    const contentReads = contentSpy.mock.calls.length;
     for (let i = 0; i < 10; i++) runFrame();
-    // At most one extra read per frame from the drop resolver; never one per row.
-    expect(spy.mock.calls.length - afterStart).toBeLessThanOrEqual(10);
+    expect(tree.scrollTop).toBeGreaterThan(scrolledAt); // the frames did scroll and re-resolve
+    expect(containerSpy.mock.calls.length - containerReads).toBe(0);
+    expect(contentSpy.mock.calls.length - contentReads).toBe(0);
+  });
+
+  it("re-reads the rect once after the page scrolled during the drag", () => {
+    const { tree } = mount();
+    const containerSpy = vi.fn(() => ({ top: 0, bottom: 400, left: 0, right: 300 }) as DOMRect);
+    tree.getBoundingClientRect = containerSpy;
+    startDrag();
+    runFrame();
+    const before = containerSpy.mock.calls.length;
+    act(() => {
+      document.dispatchEvent(new Event("scroll"));
+    });
+    runFrame();
+    runFrame();
+    runFrame();
+    expect(containerSpy.mock.calls.length - before).toBe(1);
+  });
+
+  it("removes the window scroll listener on drop, Esc and unmount mid-drag", () => {
+    for (const end of ["drop", "escape", "unmount"] as const) {
+      const add = vi.spyOn(window, "addEventListener");
+      const remove = vi.spyOn(window, "removeEventListener");
+      const view = mount();
+      startDrag();
+      runFrame();
+      const added = add.mock.calls.filter((c) => c[0] === "scroll");
+      expect(added.length).toBe(1);
+      act(() => {
+        if (end === "drop") document.dispatchEvent(new MouseEvent("pointerup", { bubbles: true }));
+        else if (end === "escape")
+          document.dispatchEvent(new KeyboardEvent("keydown", { code: "Escape", bubbles: true }));
+        else view.unmount();
+      });
+      expect(
+        remove.mock.calls.some((c) => c[0] === "scroll" && c[1] === added[0]?.[1] && (c[2] as { capture?: boolean })?.capture === true),
+      ).toBe(true);
+      expect(frames.size).toBe(0);
+      cleanup();
+      vi.restoreAllMocks();
+    }
   });
 });
