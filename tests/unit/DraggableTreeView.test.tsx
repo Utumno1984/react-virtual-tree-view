@@ -47,10 +47,12 @@ describe("DraggableTreeView", () => {
     expect(ids).toEqual(new Set(["p", "A", "B", 3, "q"]));
   });
 
-  it("sets touch-action: none on every row while keeping the virtualization top", () => {
+  // Expectation changed on purpose: touch-action: none on rows turned every touch scroll into a
+  // drag. Touch drags are now long-press based (TouchSensor), so rows must not block scrolling.
+  it("does not block native touch scrolling on rows and keeps the virtualization top", () => {
     render(<DraggableTreeView data={tree} defaultExpandedIds={["p"]} />);
     for (const id of ["p", "A", "B", "3", "q"]) {
-      expect(row(id).style.touchAction).toBe("none");
+      expect(row(id).style.touchAction).toBe("");
       expect(row(id).style.top).not.toBe("");
       expect(row(id).style.position).toBe("absolute");
     }
