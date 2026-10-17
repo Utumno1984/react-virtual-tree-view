@@ -4,7 +4,9 @@ import {
   calculateNewParent,
   findDuplicateIds,
   flattenTree,
+  findNodeById,
   getAncestorIds,
+  getDropTarget,
   getProjection,
   getSubtreeHeight,
   moveNode,
@@ -189,12 +191,40 @@ describe("getProjection", () => {
 
   it("non-conforming initial data: a drop just above a row already deeper than maxDepth is flagged clamped, the slot is not moved past it (known limit, #26)", () => {
     // a > b > c > [d, e] is depth 3 with maxDepth 2; "l" is dropped between d and e.
-    const deep = flattenTree([n("a", [n("b", [n("c", [n("d"), n("e")])])]), n("l")], new Set(["a", "b", "c"]));
+    const tree = [n("a", [n("b", [n("c", [n("d"), n("e")])])]), n("l")];
+    const deep = flattenTree(tree, new Set(["a", "b", "c"]));
     const p = getProjection(deep, "l", "e", 0, IND, 2)!;
     // The row below ("e") is already deeper than maxDepth, so the slot is not moved past it
     // and depth 3 > maxDepth. `clamped` is true but is also true for ordinary cuts; the
     // overshoot is detected with depth + subtree height > maxDepth (here 3 + 0 > 2).
     expect(p).toMatchObject({ depth: 3, minDepth: 3, parentId: "c", clamped: true });
+    // Same result through getDropTarget, and the moved tree really is beyond the limit.
+    const target = getDropTarget(deep, "l", deep.findIndex((r) => r.id === "e"), 0, IND, 2, 0)!;
+    expect(target.projection).toMatchObject({ depth: 3, minDepth: 3, parentId: "c", clamped: true });
+    const moved = moveNode(tree, "l", target.parentId, target.index).tree;
+    expect(getAncestorIds(moved, "l").length + 0 > 2).toBe(true);
+  });
+
+  it("non-conforming initial data: the overshoot also happens when dropping above a conforming row (the slot skips rows and stops above a too-deep one) (#26)", () => {
+    // a > b > c > x > y, plus l > m (l has height 1). maxDepth 2 -> l may only be at depth <= 1.
+    // Dropped above "c" (depth 2, conforming): c is too deep for l, so the slot skips it;
+    // x (depth 3) is deeper than maxDepth, so it is not skipped: the slot stops between c and x.
+    const t = [n("a", [n("b", [n("c", [n("x", [n("y")])])])]), n("l", [n("m")])];
+    const flat = flattenTree(t, new Set(["a", "b", "c", "x"]));
+    const p = getProjection(flat, "l", "c", 0, IND, 2)!;
+    expect(p).toMatchObject({ depth: 3, minDepth: 3, parentId: "c", clamped: true });
+    const target = getDropTarget(flat, "l", flat.findIndex((r) => r.id === "c"), 0, IND, 2)!;
+    expect(target.projection).toMatchObject({ depth: 3, minDepth: 3, parentId: "c", clamped: true });
+    const moved = moveNode(t, "l", target.parentId, target.index).tree;
+    expect(getAncestorIds(moved, "l").length + getSubtreeHeight(findNodeById(moved, "l")!) > 2).toBe(true);
+  });
+
+  it("a dragged subtree already taller than maxDepth exceeds the limit wherever it is dropped (#26)", () => {
+    const t = [n("a"), n("l", [n("m", [n("o")])])];
+    const flat = flattenTree(t, new Set());
+    const p = getProjection(flat, "l", "a", 0, IND, 1)!;
+    expect(p.depth + getSubtreeHeight(t[1]!)).toBeGreaterThan(1);
+    expect(p.clamped).toBe(true);
   });
 
   it("does not treat disabled nodes differently", () => {

@@ -116,15 +116,11 @@ export function calculateNewParent<T>(
  * Returns `null` if the active or over id is not in the list.
  *
  * Known limit with non-conforming data: if the list already contains rows deeper than
- * `maxDepth` (e.g. `a > b > c > [d, e]` with `maxDepth = 2`), a drop just above a row that is
- * already deeper than `maxDepth` is forced to at least that depth (`minDepth`), so the result
- * can stay beyond `maxDepth`: the slot is not moved past those rows. `clamped` is `true` there
- * but also for an ordinary cut that does honour the limit, so it is necessary, not sufficient.
- * To detect the overshoot during a drag use
- * `projection.depth + getSubtreeHeight(node) > maxDepth` (with the `maxDepth` you passed, not
- * `projection.maxDepth`, which is raised to `minDepth`). In `onTreeChange`, where the event has
- * no `clamped`, use `getAncestorIds(tree, event.nodeId).length + getSubtreeHeight(node) > maxDepth`
- * and ignore the new tree if true.
+ * `maxDepth`, the final slot can be right above a row deeper than `maxDepth` (also after moving
+ * past the rows that are too deep for the subtree), or the dragged subtree can be taller than
+ * `maxDepth`: the result then stays beyond the limit. `clamped` is `true` there but also for
+ * ordinary cuts, so check `depth + getSubtreeHeight(node) > maxDepth` (your `maxDepth`, not
+ * `projection.maxDepth`). Details and recipes: "Known limit with non-conforming data" in the README.
  */
 export function getProjection<T>(
   flattened: readonly FlattenedNode<T>[],
