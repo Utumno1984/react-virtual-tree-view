@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { TreeNode } from "../../src";
-import { generateTree, type FileMeta } from "../../stories/data/generateTree";
+import { generateTree } from "../../stories/data/generateTree";
 
-function walk(nodes: TreeNode[], depth = 0, out: { node: TreeNode; depth: number }[] = []) {
+function walk<T>(
+  nodes: TreeNode<T>[],
+  depth = 0,
+  out: { node: TreeNode<T>; depth: number }[] = [],
+) {
   for (const node of nodes) {
     out.push({ node, depth });
     if (node.children) walk(node.children, depth + 1, out);
@@ -82,7 +86,9 @@ describe("generateTree", () => {
     it("attaches well-formed data to every node", () => {
       const flat = walk(generateTree({ count: 500, maxDepth: 4, seed: 9, withData: true }));
       for (const { node } of flat) {
-        const d = node.data as FileMeta;
+        const d = node.data;
+        expect(d).toBeDefined();
+        if (!d) continue;
         expect(d.owner.length).toBeGreaterThan(0);
         expect(["draft", "review", "published"]).toContain(d.status);
         expect(Number.isInteger(d.sizeBytes) && d.sizeBytes >= 0).toBe(true);

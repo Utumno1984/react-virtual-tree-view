@@ -61,6 +61,10 @@ test.describe("node metadata", () => {
     const text = await panel(page).innerText();
     expect(text).not.toContain("CV.pdf");
     expect(text).not.toContain("alice");
+    // Different statuses: "published" (cv) must vanish, "draft" (holiday) must show.
+    expect(findIn(fileTree, "cv").data!.status).not.toBe(findIn(fileTree, "holiday").data!.status);
+    expect(text).not.toContain(findIn(fileTree, "cv").data!.status);
+    await expect(page.getByTestId("meta-status")).toHaveText(findIn(fileTree, "holiday").data!.status);
     expect(text).not.toContain("12698");
     expect(text).not.toContain(findIn(fileTree, "cv").data!.updatedAt);
   });
@@ -133,20 +137,22 @@ test.describe("node metadata", () => {
     await tree.evaluate((el) => {
       el.scrollTop = el.scrollHeight;
     });
+    // Same generator call as the story. Folders are collapsed: the last row is the last root.
+    const dataset = generateTree({ count: 1500, maxDepth: 4, seed: 21, withData: true });
+    const lastNode = dataset[dataset.length - 1]!;
+    const lastId = String(lastNode.id);
     const items = page.getByRole("treeitem");
-    await expect(items.last()).toBeVisible();
+    // Wait for the virtualized window to be redrawn at the bottom before reading rows.
+    await expect(node(page, "node-0")).toHaveCount(0);
+    await expect(items.last()).toHaveAttribute("data-node-id", lastId);
     const count = await items.count();
     expect(count).toBeGreaterThan(0);
     expect(count).toBeLessThan(60);
 
-    const last = items.last();
-    const id = await last.getAttribute("data-node-id");
-    const label = (await last.innerText()).trim();
-    await last.click();
-    await expect(page.getByTestId("meta-id")).toHaveText(id!);
-    await expect(page.getByTestId("meta-label")).toHaveText(label);
-    // Same generator call as the story: compare against the dataset.
-    const { data } = findIn(generateTree({ count: 1500, maxDepth: 4, seed: 21, withData: true }), id!);
+    await node(page, lastId).click();
+    await expect(page.getByTestId("meta-id")).toHaveText(lastId);
+    await expect(page.getByTestId("meta-label")).toHaveText(lastNode.label);
+    const { data } = findIn(dataset, lastId);
     await expect(page.getByTestId("meta-owner")).toHaveText(data!.owner);
     await expect(page.getByTestId("meta-status")).toHaveText(data!.status);
     await expect(page.getByTestId("meta-size")).toHaveText(String(data!.sizeBytes));

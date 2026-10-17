@@ -45,6 +45,10 @@ const ROOT_PROBABILITY = 0.08;
  * Deterministic tree generator shared by stories, unit tests and e2e tests.
  * Runs in O(count). Ids are unique (`node-<n>`), labels are never empty.
  */
+export function generateTree(
+  options: GenerateTreeOptions & { withData: true },
+): TreeNode<FileMeta>[];
+export function generateTree(options: GenerateTreeOptions): TreeNode[];
 export function generateTree({
   count,
   maxDepth,

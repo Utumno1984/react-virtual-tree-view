@@ -8,10 +8,12 @@ import type { FileMeta } from "./data/generateTree";
 
 const largeTree = generateTree({ count: 1500, maxDepth: 4, seed: 21, withData: true });
 
-const formatSize = (bytes: number) =>
-  bytes < 1024
-    ? `${bytes} B`
-    : `${(bytes / 1024).toLocaleString("it-IT", { maximumFractionDigits: 1 })} KB`;
+const formatSize = (bytes: number) => {
+  const fmt = (n: number) => n.toLocaleString("it-IT", { maximumFractionDigits: 1 });
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${fmt(bytes / 1024)} KB`;
+  return `${fmt(bytes / (1024 * 1024))} MB`;
+};
 
 interface Selected {
   id: TreeNode["id"];
