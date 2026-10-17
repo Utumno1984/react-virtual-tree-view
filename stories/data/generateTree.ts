@@ -25,6 +25,8 @@ export interface GenerateTreeOptions {
   disabledRatio?: number;
   /** Attach a deterministic `FileMeta` to every node's `data`. Default false (no `data`). */
   withData?: boolean;
+  /** Prefix of every node id (`<idPrefix><n>`); gives several trees disjoint id spaces. Default `node-`. */
+  idPrefix?: string;
 }
 
 /** Small seeded PRNG (mulberry32): returns a function yielding floats in [0, 1). */
@@ -43,7 +45,7 @@ const ROOT_PROBABILITY = 0.08;
 
 /**
  * Deterministic tree generator shared by stories, unit tests and e2e tests.
- * Runs in O(count). Ids are unique (`node-<n>`), labels are never empty.
+ * Runs in O(count). Ids are unique (`<idPrefix><n>`, default `node-<n>`), labels are never empty.
  */
 export function generateTree(
   options: GenerateTreeOptions & { withData: true },
@@ -55,6 +57,7 @@ export function generateTree({
   seed = 1,
   disabledRatio = 0,
   withData = false,
+  idPrefix = "node-",
 }: GenerateTreeOptions): TreeNode<FileMeta>[] {
   const total = Math.max(0, Math.floor(count));
   const rand = mulberry32(seed);
@@ -67,7 +70,7 @@ export function generateTree({
   const candidates: { node: TreeNode<FileMeta>; depth: number }[] = [];
 
   for (let i = 0; i < total; i++) {
-    const node: TreeNode<FileMeta> = { id: `node-${i}`, label: `Node ${i}` };
+    const node: TreeNode<FileMeta> = { id: `${idPrefix}${i}`, label: `Node ${i}` };
     if (withData) {
       node.data = {
         owner: OWNERS[Math.floor(randData() * OWNERS.length)]!,
