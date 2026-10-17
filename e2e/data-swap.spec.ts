@@ -5,7 +5,22 @@ import { center, collectConsole, dragToPoint, node, order, storyUrl } from "./he
 const treeStory = storyUrl("treeview-dataswap--default");
 const dragStory = storyUrl("draggabletreeview-dataswap--default");
 
-const pick = (page: Page, name: string) => page.getByTestId(`dataset-${name}`).click();
+// `defaultExpandedIds` is read on mount only, but ids that coincide with the new tree stay
+// expanded: "a-docs" was expanded at mount, so it is open every time `small` comes back.
+const SMALL_ROWS = [
+  "a-docs",
+  "a-cv",
+  "a-reports",
+  "a-notes",
+  "a-pics",
+  "a-music",
+  "a-readme",
+  "a-todo",
+  "a-locked",
+  "a-tmp",
+];
+
+const pick =(page: Page, name: string) => page.getByTestId(`dataset-${name}`).click();
 const tree = (page: Page) => page.getByRole("tree");
 const items = (page: Page) => page.getByRole("treeitem");
 const ids = (page: Page) => order(page) as Promise<string[]>;
@@ -47,17 +62,9 @@ test.describe("TreeView/DataSwap", () => {
     await expect(node(page, "b-0")).toHaveCount(0);
     await pick(page, "small");
     await expect.poll(() => tree(page).evaluate((el) => el.scrollTop)).toBe(0);
-    expect(await ids(page)).toEqual([
-      "a-docs",
-      "a-pics",
-      "a-music",
-      "a-readme",
-      "a-todo",
-      "a-locked",
-      "a-tmp",
-    ]);
+    expect(await ids(page)).toEqual(SMALL_ROWS);
     await expect(node(page, "a-docs")).toHaveCSS("top", "0px");
-    expect(await contentHeight(page)).toBe(7 * 32);
+    expect(await contentHeight(page)).toBe(SMALL_ROWS.length * 32);
     const treeBox = await tree(page).boundingBox();
     const firstBox = await node(page, "a-docs").boundingBox();
     expect(firstBox!.y).toBeGreaterThanOrEqual(treeBox!.y);
@@ -121,7 +128,7 @@ test.describe("TreeView/DataSwap", () => {
     await expect(node(page, "a-locked")).toHaveAttribute("aria-disabled", "true");
     await node(page, "a-tmp").click();
     await expect(page.getByTestId("selected")).toHaveText("a-tmp|Tmp");
-    await node(page, "a-locked").click();
+    await node(page, "a-locked").click({ force: true });
     await expect(page.getByTestId("selected")).toHaveText("a-tmp|Tmp");
     await expect(node(page, "a-locked")).toHaveAttribute("aria-selected", "false");
   });
@@ -193,15 +200,9 @@ test.describe("DraggableTreeView/DataSwap", () => {
     await expect(page.getByTestId("last-event")).toContainText(
       '"nodeId":"a-todo","fromParentId":null,"toParentId":null,"index":3',
     );
-    expect(await ids(page)).toEqual([
-      "a-docs",
-      "a-pics",
-      "a-music",
-      "a-todo",
-      "a-readme",
-      "a-locked",
-      "a-tmp",
-    ]);
+    expect(await ids(page)).toEqual(
+      SMALL_ROWS.map((id) => (id === "a-readme" ? "a-todo" : id === "a-todo" ? "a-readme" : id)),
+    );
     let flat = (await page.getByTestId("last-tree-ids").getAttribute("data-ids"))!.split(",");
     expect(flat.every((id) => id.startsWith("a-"))).toBe(true);
     expect(flat).toHaveLength(16);
@@ -239,15 +240,7 @@ test.describe("DraggableTreeView/DataSwap", () => {
     await pick(page, "large");
     await expect(node(page, "b-0")).toBeVisible();
     await pick(page, "small");
-    expect(await ids(page)).toEqual([
-      "a-docs",
-      "a-pics",
-      "a-music",
-      "a-readme",
-      "a-todo",
-      "a-locked",
-      "a-tmp",
-    ]);
+    expect(await ids(page)).toEqual(SMALL_ROWS);
     await dragToPoint(page, node(page, "a-todo"), {
       x: (await center(node(page, "a-pics"))).x,
       y: (await center(node(page, "a-pics"))).y - 12,

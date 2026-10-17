@@ -37,7 +37,7 @@ function DataSwapDemo({ initial = "small" }: { initial?: DatasetName }) {
       <TreeView
         data={data}
         searchQuery={query}
-        height={320}
+        height={400}
         defaultExpandedIds={["a-docs"]}
         aria-label="Swappable tree"
         onSelect={(id, node) => setSelected(`${id}|${node.label}`)}

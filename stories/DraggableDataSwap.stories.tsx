@@ -29,7 +29,7 @@ function DraggableDataSwapDemo({ maxDepth }: { maxDepth?: number }) {
       />
       <DraggableTreeView
         data={data}
-        height={320}
+        height={400}
         maxDepth={maxDepth}
         defaultExpandedIds={["a-docs"]}
         aria-label="Swappable draggable tree"
