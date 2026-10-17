@@ -1,6 +1,6 @@
 import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ForwardedRef, ReactElement } from "react";
-import { DndContext, DragOverlay, PointerSensor, useDraggable, useSensor, useSensors } from "@dnd-kit/core";
+import { DndContext, DragOverlay, MouseSensor, TouchSensor, useDraggable, useSensor, useSensors } from "@dnd-kit/core";
 import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import type { ContainerGeometry, DragRowProps, DropResolver, TreeDndAdapter } from "./dnd-internal";
 import { createPreviewStore } from "./dnd-internal";
@@ -16,8 +16,19 @@ import {
 
 /** Pixels the pointer must travel before a press becomes a drag (so clicks still work). */
 const ACTIVATION_DISTANCE = 5;
+/** Touch: press-and-hold time (ms) before a drag starts; a quicker swipe still scrolls the tree. */
+const TOUCH_ACTIVATION_DELAY = 250;
 
-function DraggableRow({ nodeId, dragDisabled, children, ...rest }: DragRowProps) {
+/** Viewport coordinates of a mouse/pointer/touch event (touch events have no clientX/clientY). */
+function getEventPoint(event: Event | null | undefined): { x: number; y: number } | null {
+  if (!event) return null;
+  const touch = (event as TouchEvent).touches?.[0] ?? (event as TouchEvent).changedTouches?.[0];
+  const source = touch ?? (event as Partial<MouseEvent>);
+  if (typeof source.clientX !== "number" || typeof source.clientY !== "number") return null;
+  return { x: source.clientX, y: source.clientY };
+}
+
+function DraggableRow({ nodeId, dragDisabled, children, style, ...rest }: DragRowProps) {
   // The draggable id is the node id, never the row position: after a reorder the
   // position belongs to another node, and DragOverlay's drop animation targets the id.
   const { setNodeRef, listeners, isDragging } = useDraggable({ id: nodeId, disabled: dragDisabled });
@@ -26,6 +37,7 @@ function DraggableRow({ nodeId, dragDisabled, children, ...rest }: DragRowProps)
       ref={setNodeRef}
       {...rest}
       {...listeners}
+      style={style}
       data-dragging={isDragging ? "" : undefined}
       data-drag-disabled={dragDisabled ? "" : undefined}
     >
@@ -68,7 +80,12 @@ function DraggableTreeViewInner<T = unknown>(
   // Height of the dragged subtree, computed once per drag (on start) and reused on every move.
   const subtreeHeight = useRef<number | undefined>(undefined);
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: ACTIVATION_DISTANCE } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: ACTIVATION_DISTANCE } }),
+    // Touch drags need a long-press: a plain swipe keeps scrolling the tree natively, and once
+    // the drag is active TouchSensor blocks the scroll, so the gesture is not cancelled.
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: TOUCH_ACTIVATION_DELAY, tolerance: ACTIVATION_DISTANCE },
+    }),
   );
 
   const { data } = props;
@@ -93,10 +110,9 @@ function DraggableTreeViewInner<T = unknown>(
 
   const onDragStart = useCallback(
     ({ active, activatorEvent }: DragStartEvent) => {
-      const event = activatorEvent as Partial<PointerEvent>;
       // Known limitation: this is where the press happened. By activation the pointer has
-      // moved a few px (the activation distance); the first `pointermove` corrects it.
-      pointer.current = { x: event.clientX ?? 0, y: event.clientY ?? 0 };
+      // moved a few px (the activation distance); the first move event corrects it.
+      pointer.current = getEventPoint(activatorEvent) ?? { x: 0, y: 0 };
       origin.current = pointer.current;
       const node = maxDepth === undefined ? undefined : findNodeById(dataRef.current, active.id);
       subtreeHeight.current = node ? getSubtreeHeight(node) : undefined;
@@ -129,15 +145,20 @@ function DraggableTreeViewInner<T = unknown>(
       last = target;
       previewStore.set(target ? { projection: target.projection, slot: target.slot } : null);
     };
-    const onMove = (event: PointerEvent) => {
-      pointer.current = { x: event.clientX, y: event.clientY };
+    const onMove = (event: Event) => {
+      const point = getEventPoint(event);
+      if (!point) return;
+      pointer.current = point;
       refresh();
     };
     refresh();
     refreshRef.current = refresh;
+    // `touchmove` too: while a touch drag is active the browser may not deliver pointermove.
     document.addEventListener("pointermove", onMove);
+    document.addEventListener("touchmove", onMove);
     return () => {
       document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("touchmove", onMove);
       refreshRef.current = null;
       previewStore.set(null);
     };

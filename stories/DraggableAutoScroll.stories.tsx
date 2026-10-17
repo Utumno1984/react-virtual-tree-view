@@ -16,6 +16,7 @@ interface DemoProps {
   autoScrollThreshold?: number;
   autoScrollMaxSpeed?: number;
   maxDepth?: number;
+  searchQuery?: string;
   /** Surround the tree with spacers so the page itself scrolls. */
   tallPage?: boolean;
 }
@@ -81,6 +82,11 @@ export const Disabled: Story = {
 /** A short list (fits in the container): nothing to scroll. */
 export const ShortList: Story = {
   args: { count: 8 },
+};
+
+/** A search is active: rows are not draggable, but the long list still scrolls (also by touch). */
+export const SearchActive: Story = {
+  args: { searchQuery: "Item" },
 };
 
 /** The page is taller than the window: scrolling the page mid-drag moves the bands with the tree. */

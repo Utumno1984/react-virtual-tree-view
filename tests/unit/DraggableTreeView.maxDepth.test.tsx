@@ -49,6 +49,7 @@ const indicator = () => document.querySelector("[data-drop-indicator]") as HTMLE
 
 function move(x: number, y: number) {
   act(() => {
+    fireEvent.mouseMove(document, { clientX: x, clientY: y, buttons: 1 });
     fireEvent.pointerMove(document, { clientX: x, clientY: y, pointerId: 1, buttons: 1 });
   });
 }
@@ -56,7 +57,7 @@ function move(x: number, y: number) {
 function startDrag(id: string, row: number) {
   const y = row * ROW + ROW / 2;
   act(() => {
-    fireEvent.pointerDown(rowEl(id), { clientX: 100, clientY: y, pointerId: 1, button: 0, buttons: 1, isPrimary: true });
+    fireEvent.mouseDown(rowEl(id), { clientX: 100, clientY: y, button: 0, buttons: 1 });
   });
   move(100, y + 10);
   move(100, y);
@@ -177,7 +178,7 @@ describe("DraggableTreeView maxDepth", () => {
     render(<DraggableTreeView data={dup} maxDepth={1} height={400} rowHeight={ROW} indentation={IND} />);
     const row = document.querySelector('[data-node-id="x"]') as HTMLElement;
     act(() => {
-      fireEvent.pointerDown(row, { clientX: 100, clientY: 16, pointerId: 1, button: 0, buttons: 1, isPrimary: true });
+      fireEvent.mouseDown(row, { clientX: 100, clientY: 16, button: 0, buttons: 1 });
     });
     move(100, 26);
     move(100 + IND, 40);

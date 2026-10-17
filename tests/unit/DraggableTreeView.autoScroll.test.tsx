@@ -51,9 +51,12 @@ function mount(props: Partial<React.ComponentProps<typeof DraggableTreeView>> = 
 
 function startDrag(id = "n0") {
   const row = document.querySelector(`[data-node-id="${id}"]`) as HTMLElement;
-  fireEvent.pointerDown(row, { clientX: 20, clientY: 10, button: 0, isPrimary: true, pointerId: 1 });
+  fireEvent.mouseDown(row, { clientX: 20, clientY: 10, button: 0 });
   const move = () =>
     act(() => {
+      document.dispatchEvent(
+        new MouseEvent("mousemove", { clientX: 20, clientY: 395, bubbles: true }),
+      );
       document.dispatchEvent(
         new MouseEvent("pointermove", { clientX: 20, clientY: 395, bubbles: true }),
       );
@@ -76,7 +79,7 @@ describe("DraggableTreeView auto-scroll", () => {
     runFrame();
     expect(tree.scrollTop).toBeGreaterThan(0);
     act(() => {
-      document.dispatchEvent(new MouseEvent("pointerup", { bubbles: true }));
+      document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
     });
     const at = tree.scrollTop;
     runFrame();
@@ -122,7 +125,7 @@ describe("DraggableTreeView auto-scroll", () => {
       const added = ownMoveListeners(add.mock.calls as never);
       expect(added.length).toBeGreaterThan(0);
       act(() => {
-        if (end === "drop") document.dispatchEvent(new MouseEvent("pointerup", { bubbles: true }));
+        if (end === "drop") document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
         else document.dispatchEvent(new KeyboardEvent("keydown", { code: "Escape", bubbles: true }));
       });
       for (const [, listener] of added) {
@@ -152,6 +155,7 @@ describe("DraggableTreeView auto-scroll", () => {
     expect(frames.size).toBe(0);
     runFrame();
     act(() => {
+      document.dispatchEvent(new MouseEvent("mousemove", { clientX: 20, clientY: 399, bubbles: true }));
       document.dispatchEvent(new MouseEvent("pointermove", { clientX: 20, clientY: 399, bubbles: true }));
     });
     expect(errors).not.toHaveBeenCalled();
@@ -203,7 +207,7 @@ describe("DraggableTreeView auto-scroll", () => {
       const added = add.mock.calls.filter((c) => c[0] === "scroll");
       expect(added.length).toBe(1);
       act(() => {
-        if (end === "drop") document.dispatchEvent(new MouseEvent("pointerup", { bubbles: true }));
+        if (end === "drop") document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
         else if (end === "escape")
           document.dispatchEvent(new KeyboardEvent("keydown", { code: "Escape", bubbles: true }));
         else view.unmount();

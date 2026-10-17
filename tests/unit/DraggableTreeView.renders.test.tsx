@@ -36,6 +36,7 @@ const indicator = () => document.querySelector("[data-drop-indicator]") as HTMLE
 
 function move(x: number, y: number) {
   act(() => {
+    fireEvent.mouseMove(document, { clientX: x, clientY: y, buttons: 1 });
     fireEvent.pointerMove(document, { clientX: x, clientY: y, pointerId: 1, buttons: 1 });
   });
 }
@@ -59,7 +60,7 @@ describe("DraggableTreeView renders while dragging", () => {
     // press on B (row index 2 -> y 64..96) and cross the activation distance
     const y = 2 * ROW + ROW / 2;
     act(() => {
-      fireEvent.pointerDown(rowEl("B"), { clientX: 100, clientY: y, pointerId: 1, button: 0, buttons: 1, isPrimary: true });
+      fireEvent.mouseDown(rowEl("B"), { clientX: 100, clientY: y, button: 0, buttons: 1 });
     });
     move(100, y + 10);
     move(100, y);

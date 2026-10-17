@@ -84,7 +84,8 @@ function MinimalDraggableTree() {
 ```
 
 `DraggableTreeView` needs no `DndContext` of your own. Dragging is disabled while a search is active
-and on disabled nodes.
+and on disabled nodes. On touch screens press and hold a row (about 250 ms) to drag it; a normal
+swipe scrolls the tree as usual.
 
 ### Selection, search and scrolling
 
