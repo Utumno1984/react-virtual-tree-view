@@ -117,6 +117,35 @@ describe("generateTree", () => {
     });
   });
 
+  describe("idPrefix", () => {
+    it("defaults to `node-` and leaves the output unchanged", () => {
+      const base = generateTree({ count: 300, maxDepth: 4, seed: 9 });
+      expect(generateTree({ count: 300, maxDepth: 4, seed: 9, idPrefix: "node-" })).toEqual(base);
+      expect(walk(base).every((e) => /^node-\d+$/.test(String(e.node.id)))).toBe(true);
+    });
+
+    it("prefixes every id and keeps shape, labels and depths", () => {
+      const opts = { count: 300, maxDepth: 4, seed: 9, disabledRatio: 0.1 };
+      const base = walk(generateTree(opts));
+      const flat = walk(generateTree({ ...opts, idPrefix: "b-" }));
+      expect(flat).toHaveLength(300);
+      expect(flat.every((e) => String(e.node.id).startsWith("b-"))).toBe(true);
+      expect(new Set(flat.map((e) => e.node.id)).size).toBe(300);
+      expect(flat.map((e) => e.node.id)).toEqual(
+        base.map((e) => String(e.node.id).replace("node-", "b-")),
+      );
+      expect(flat.map((e) => e.node.label)).toEqual(base.map((e) => e.node.label));
+      expect(flat.map((e) => e.depth)).toEqual(base.map((e) => e.depth));
+    });
+
+    it("yields disjoint id spaces for different prefixes", () => {
+      const ids = (idPrefix: string) =>
+        walk(generateTree({ count: 200, maxDepth: 3, idPrefix })).map((e) => e.node.id);
+      const a = new Set(ids("a-"));
+      expect(ids("b-").some((id) => a.has(id))).toBe(false);
+    });
+  });
+
   it("generates 5000 nodes in under 500 ms", () => {
     const start = performance.now();
     const tree = generateTree({ count: 5000, maxDepth: 6, seed: 5 });
