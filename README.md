@@ -331,7 +331,8 @@ ready-made theme (scope it with `className="rvtv-tree"`). For example:
 ## Storybook
 
 [Storybook](https://storybook.js.org) is the showcase: one story per significant state (search, drag,
-`maxDepth`, auto-scroll, context menu, example theme). It is not hosted yet; run it locally with
+`maxDepth`, auto-scroll, context menu, example theme). The latest build from `main` is published at
+<https://utumno1984.github.io/react-virtual-tree-view/>; to run it locally use
 `npm run storybook` (sources in [`stories/`](stories)).
 
 ## Virtualization and performance
