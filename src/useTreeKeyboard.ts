@@ -17,6 +17,8 @@ interface Options {
   /** First visible row of each id (the first occurrence wins when ids repeat). */
   firstIndexById: ReadonlyMap<TreeId, number>;
   selectedIndex: number;
+  /** Every id of the whole tree: a focused id that is gone from it is forgotten. */
+  knownIds: ReadonlySet<TreeId>;
   containerRef: RefObject<HTMLElement | null>;
   scrollToIndex: (index: number) => void;
   toggle: (id: TreeId) => void;
@@ -31,12 +33,18 @@ export function useTreeKeyboard({
   rows,
   firstIndexById,
   selectedIndex,
+  knownIds,
   containerRef,
   scrollToIndex,
   toggle,
   select,
 }: Options) {
-  const [focusedId, setFocusedId] = useState<TreeId | null>(null);
+  const [focusedIdState, setFocusedId] = useState<TreeId | null>(null);
+  // The focused id vanished from `data`: drop it from the state during render (no flash,
+  // and it does not come back if the same id reappears in a later tree).
+  const focusedGone = focusedIdState !== null && !knownIds.has(focusedIdState);
+  if (focusedGone) setFocusedId(null);
+  const focusedId = focusedGone ? null : focusedIdState;
   const [hasFocus, setHasFocus] = useState(false);
   const pending = useRef<number | null>(null);
 

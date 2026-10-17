@@ -15,6 +15,8 @@ function DraggableDataSwapDemo({ maxDepth }: { maxDepth?: number }) {
   const [data, setData] = useState<TreeNode[]>(() => createDataset("small"));
   const [lastEvent, setLastEvent] = useState<TreeChangeEvent | null>(null);
   const [lastIds, setLastIds] = useState("");
+  const [selected, setSelected] = useState("none");
+  const [expandedEvents, setExpandedEvents] = useState(0);
   return (
     <div className="w-80 space-y-2">
       <DatasetBar
@@ -33,6 +35,8 @@ function DraggableDataSwapDemo({ maxDepth }: { maxDepth?: number }) {
         maxDepth={maxDepth}
         defaultExpandedIds={["a-docs"]}
         aria-label="Swappable draggable tree"
+        onSelect={(id, node) => setSelected(`${id}|${node.label}`)}
+        onExpandedChange={() => setExpandedEvents((count) => count + 1)}
         onTreeChange={(tree, event) => {
           setLastEvent(event);
           setLastIds(flattenIds(tree).join(","));
@@ -53,6 +57,12 @@ function DraggableDataSwapDemo({ maxDepth }: { maxDepth?: number }) {
       />
       <p data-testid="active-dataset" className="text-xs text-gray-600">
         {name}
+      </p>
+      <p data-testid="selected" className="text-xs text-gray-600">
+        {selected}
+      </p>
+      <p data-testid="expanded-events" className="text-xs text-gray-600">
+        {expandedEvents}
       </p>
       <pre data-testid="last-event" className="rounded bg-gray-50 p-2 text-xs text-gray-700">
         {lastEvent ? `onTreeChange ${JSON.stringify(lastEvent)}` : "onTreeChange: none yet"}
@@ -82,8 +92,14 @@ type Story = StoryObj<typeof meta>;
  * Same buttons as `TreeView/DataSwap`, on a `DraggableTreeView` with `maxDepth={6}` (the
  * `deep` preset reaches exactly that depth). Each click recreates the preset from scratch,
  * so a reorder made on `small` is gone when you come back to it. `defaultExpandedIds` is
- * read on mount only: after a swap the new tree starts collapsed (only ids that happen to
- * coincide with already expanded ones stay expanded).
+ * read on mount only: after a swap the new tree starts collapsed.
+ *
+ * Stale ids are cleaned up like in `TreeView/DataSwap`: click a `small` node and then
+ * `large` (the uncontrolled selection is reset, no `treeitem` is `aria-selected`); click
+ * `a-cv` and then `variant` (same id in both trees: it stays selected, with the new label).
+ * Expanded and focused ids that disappear are dropped silently, without `onExpandedChange`
+ * (the counter below the tree does not move), and exactly one `treeitem` keeps `tabindex=0`.
+ * A drop (`onTreeChange`) keeps all ids, so it never resets anything.
  *
  * Note: the development warning "data already exceeds maxDepth" is evaluated when
  * `maxDepth` changes, not when `data` changes, so swapping to a tree deeper than the limit

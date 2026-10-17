@@ -317,6 +317,18 @@ Type exports: `TreeNode`, `TreeViewProps`, `DraggableTreeViewProps`, `RenderNode
   markup.
 - **`data` is controlled** for `DraggableTreeView`, and should be memoized when searching.
 - **Search is O(n)** and clears back to the previous expansion exactly.
+- **Replacing `data` at runtime.** The ids kept in the internal state are checked against the whole
+  new tree (not only the visible rows; one O(n) pass):
+  - uncontrolled selection (`defaultSelectedId`): reset if its id is gone from the new tree, kept if
+    the id exists (even with a different label: the id is the node's identity) or is only hidden by a
+    closed branch or a search filter;
+  - expanded nodes and the keyboard-focused node whose id is gone are dropped silently, without
+    calling `onExpandedChange` (an id that comes back later is not expanded);
+  - controlled `selectedId` is never touched: update it together with `data`. In development a
+    `console.warn` names the missing id (once per id; nothing in production).
+
+  There is no callback for these resets (`onSelect` never receives `null`): whoever swaps `data` must
+  also reset its own state tied to the old nodes, for example close a dialog opened on a node.
 
 ## Styling
 
