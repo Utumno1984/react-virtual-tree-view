@@ -17,7 +17,7 @@ import {
 /** Pixels the pointer must travel before a press becomes a drag (so clicks still work). */
 const ACTIVATION_DISTANCE = 5;
 
-function DraggableRow({ nodeId, dragDisabled, children, ...rest }: DragRowProps) {
+function DraggableRow({ nodeId, dragDisabled, children, style, ...rest }: DragRowProps) {
   // The draggable id is the node id, never the row position: after a reorder the
   // position belongs to another node, and DragOverlay's drop animation targets the id.
   const { setNodeRef, listeners, isDragging } = useDraggable({ id: nodeId, disabled: dragDisabled });
@@ -26,6 +26,9 @@ function DraggableRow({ nodeId, dragDisabled, children, ...rest }: DragRowProps)
       ref={setNodeRef}
       {...rest}
       {...listeners}
+      // Without `touch-action: none` the browser takes a touch gesture as a native scroll and
+      // fires pointercancel mid-drag. Merged after `style` to keep the virtualization `top`.
+      style={{ ...style, touchAction: "none" }}
       data-dragging={isDragging ? "" : undefined}
       data-drag-disabled={dragDisabled ? "" : undefined}
     >
