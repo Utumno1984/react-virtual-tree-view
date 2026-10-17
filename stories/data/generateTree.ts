@@ -1,5 +1,19 @@
 import type { TreeNode } from "../../src/types";
 
+/** Realistic per-node metadata used by the NodeMetadata stories. */
+export interface FileMeta {
+  owner: string;
+  status: "draft" | "review" | "published";
+  sizeBytes: number;
+  /** ISO 8601 date (UTC). */
+  updatedAt: string;
+}
+
+const OWNERS = ["alice", "bob", "carla", "dario", "elena"] as const;
+const STATUSES = ["draft", "review", "published"] as const;
+const BASE_TIME = Date.UTC(2025, 0, 1);
+const DAY_MS = 86_400_000;
+
 export interface GenerateTreeOptions {
   /** Total number of nodes in the whole tree (not only roots). */
   count: number;
@@ -9,6 +23,8 @@ export interface GenerateTreeOptions {
   seed?: number;
   /** Fraction (0..1) of nodes flagged `isDisabled: true`. Default 0. */
   disabledRatio?: number;
+  /** Attach a deterministic `FileMeta` to every node's `data`. Default false (no `data`). */
+  withData?: boolean;
 }
 
 /** Small seeded PRNG (mulberry32): returns a function yielding floats in [0, 1). */
@@ -29,22 +45,37 @@ const ROOT_PROBABILITY = 0.08;
  * Deterministic tree generator shared by stories, unit tests and e2e tests.
  * Runs in O(count). Ids are unique (`node-<n>`), labels are never empty.
  */
+export function generateTree(
+  options: GenerateTreeOptions & { withData: true },
+): TreeNode<FileMeta>[];
+export function generateTree(options: GenerateTreeOptions): TreeNode[];
 export function generateTree({
   count,
   maxDepth,
   seed = 1,
   disabledRatio = 0,
-}: GenerateTreeOptions): TreeNode[] {
+  withData = false,
+}: GenerateTreeOptions): TreeNode<FileMeta>[] {
   const total = Math.max(0, Math.floor(count));
   const rand = mulberry32(seed);
   // Independent stream for `isDisabled`, so the tree shape does not depend on `disabledRatio`.
   const randDisabled = mulberry32((seed ^ 0x9e3779b9) >>> 0);
-  const roots: TreeNode[] = [];
+  // Independent stream for `data`, so neither the shape nor `isDisabled` depend on `withData`.
+  const randData = mulberry32((seed ^ 0x85ebca6b) >>> 0);
+  const roots: TreeNode<FileMeta>[] = [];
   // Nodes that can still accept children (depth < maxDepth), with their depth.
-  const candidates: { node: TreeNode; depth: number }[] = [];
+  const candidates: { node: TreeNode<FileMeta>; depth: number }[] = [];
 
   for (let i = 0; i < total; i++) {
-    const node: TreeNode = { id: `node-${i}`, label: `Node ${i}` };
+    const node: TreeNode<FileMeta> = { id: `node-${i}`, label: `Node ${i}` };
+    if (withData) {
+      node.data = {
+        owner: OWNERS[Math.floor(randData() * OWNERS.length)]!,
+        status: STATUSES[Math.floor(randData() * STATUSES.length)]!,
+        sizeBytes: Math.floor(randData() * 5_000_000),
+        updatedAt: new Date(BASE_TIME + Math.floor(randData() * 365) * DAY_MS).toISOString(),
+      };
+    }
     if (disabledRatio > 0 && randDisabled() < disabledRatio) node.isDisabled = true;
 
     let depth = 0;
