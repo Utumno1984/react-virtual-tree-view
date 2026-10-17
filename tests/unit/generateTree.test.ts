@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TreeNode } from "../../src";
-import { generateTree } from "../../stories/data/generateTree";
+import { generateTree, type FileMeta } from "../../stories/data/generateTree";
 
 function walk(nodes: TreeNode[], depth = 0, out: { node: TreeNode; depth: number }[] = []) {
   for (const node of nodes) {
@@ -70,6 +70,45 @@ describe("generateTree", () => {
     const withDisabled = generateTree({ count: 500, maxDepth: 5, seed: 42, disabledRatio: 0.3 });
     expect(strip(withDisabled)).toEqual(strip(plain));
     expect(walk(withDisabled).some((e) => e.node.isDisabled)).toBe(true);
+  });
+
+  describe("withData", () => {
+    it("is deterministic, data included, for the same seed", () => {
+      const a = generateTree({ count: 500, maxDepth: 4, seed: 9, withData: true });
+      const b = generateTree({ count: 500, maxDepth: 4, seed: 9, withData: true });
+      expect(a).toEqual(b);
+    });
+
+    it("attaches well-formed data to every node", () => {
+      const flat = walk(generateTree({ count: 500, maxDepth: 4, seed: 9, withData: true }));
+      for (const { node } of flat) {
+        const d = node.data as FileMeta;
+        expect(d.owner.length).toBeGreaterThan(0);
+        expect(["draft", "review", "published"]).toContain(d.status);
+        expect(Number.isInteger(d.sizeBytes) && d.sizeBytes >= 0).toBe(true);
+        expect(Number.isNaN(Date.parse(d.updatedAt))).toBe(false);
+      }
+    });
+
+    it("varies data across seeds", () => {
+      expect(generateTree({ count: 50, maxDepth: 3, seed: 1, withData: true })).not.toEqual(
+        generateTree({ count: 50, maxDepth: 3, seed: 2, withData: true }),
+      );
+    });
+
+    it("leaves shape, ids and isDisabled unchanged; without it there is no data", () => {
+      const opts = { count: 500, maxDepth: 5, seed: 42, disabledRatio: 0.2 };
+      const plain = generateTree(opts);
+      const withData = generateTree({ ...opts, withData: true });
+      const strip = (nodes: TreeNode[]): unknown[] =>
+        nodes.map((n) => ({
+          id: n.id,
+          isDisabled: n.isDisabled,
+          children: n.children ? strip(n.children) : undefined,
+        }));
+      expect(strip(withData)).toEqual(strip(plain));
+      expect(walk(plain).some((e) => "data" in e.node)).toBe(false);
+    });
   });
 
   it("generates 5000 nodes in under 500 ms", () => {
