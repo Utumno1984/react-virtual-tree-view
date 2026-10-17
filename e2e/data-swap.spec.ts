@@ -20,7 +20,7 @@ const SMALL_ROWS = [
   "a-tmp",
 ];
 
-const pick =(page: Page, name: string) => page.getByTestId(`dataset-${name}`).click();
+const pick = (page: Page, name: string) => page.getByTestId(`dataset-${name}`).click();
 const tree = (page: Page) => page.getByRole("tree");
 const items = (page: Page) => page.getByRole("treeitem");
 const ids = (page: Page) => order(page) as Promise<string[]>;
@@ -111,9 +111,7 @@ test.describe("TreeView/DataSwap", () => {
     await expect(page.locator('[role="treeitem"]:focus')).toHaveCount(1);
     await expect(page.locator('[role="treeitem"]:focus')).toHaveAttribute("data-node-id", /^b-/);
     await page.keyboard.press("ArrowDown");
-    const focusedId = await page
-      .locator('[role="treeitem"]:focus')
-      .getAttribute("data-node-id");
+    const focusedId = await page.locator('[role="treeitem"]:focus').getAttribute("data-node-id");
     expect(focusedId).toMatch(/^b-/);
     await page.keyboard.press("Enter");
     const label = await node(page, focusedId!).innerText();
@@ -158,6 +156,42 @@ test.describe("TreeView/DataSwap", () => {
     await expect(page.getByTestId("no-results")).toHaveCount(0);
   });
 
+  test("a query that matches in every dataset, left untouched, is recomputed on each new tree", async ({
+    page,
+  }) => {
+    await page.goto(treeStory);
+    await page.getByTestId("search-input").fill("1");
+    await expect(node(page, "a-q1")).toBeVisible();
+    await expect(node(page, "a-docs")).toHaveAttribute("aria-expanded", "true");
+    await expect(node(page, "a-reports")).toHaveAttribute("aria-expanded", "true");
+
+    for (const [name, prefix] of [
+      ["large", "b-"],
+      ["deep", "c-"],
+      ["small", "a-"],
+    ] as const) {
+      await pick(page, name);
+      await expect(page.getByTestId("no-results")).toHaveCount(0);
+      await expectOnlyPrefix(page, prefix);
+      await expect(page.locator("mark").first()).toBeVisible();
+      // a nested row whose parent is expanded: ancestors were recomputed on the new tree
+      const nested = await items(page).evaluateAll((els) =>
+        els.some((el) => {
+          if (Number(el.getAttribute("aria-level")) <= 1) return false;
+          const level = Number(el.getAttribute("aria-level"));
+          let prev = el.previousElementSibling;
+          while (prev && Number(prev.getAttribute("aria-level")) >= level) {
+            prev = prev.previousElementSibling;
+          }
+          return prev?.getAttribute("aria-expanded") === "true";
+        }),
+      );
+      expect(nested).toBe(true);
+    }
+    await expect(node(page, "a-q1")).toBeVisible();
+    await expect(node(page, "a-reports")).toHaveAttribute("aria-expanded", "true");
+  });
+
   test("the role=tree element is the same DOM node across swaps; 10 rapid swaps are console-clean", async ({
     page,
   }) => {
@@ -167,7 +201,18 @@ test.describe("TreeView/DataSwap", () => {
     await tree(page).evaluate((el) => {
       (el as HTMLElement & { __marker?: string }).__marker = "same";
     });
-    const sequence = ["large", "deep", "empty", "small", "large", "single", "deep", "empty", "large", "small"];
+    const sequence = [
+      "large",
+      "deep",
+      "empty",
+      "small",
+      "large",
+      "single",
+      "deep",
+      "empty",
+      "large",
+      "small",
+    ];
     for (const name of sequence) await pick(page, name);
     await expect(node(page, "a-docs")).toBeVisible();
     // `empty` removes the scroll container styles but never the element itself
@@ -267,6 +312,30 @@ test.describe("DraggableTreeView/DataSwap", () => {
     // the drop is cut at the root level, i.e. the starting position: no change reported
     await expect(page.getByTestId("last-event")).toContainText("none yet");
     await expect(node(page, "c-1-0")).toHaveAttribute("aria-level", "1");
+  });
+
+  test("deep: a leaf nests within the limit and onTreeChange reports the new parent", async ({
+    page,
+  }) => {
+    await page.goto(dragStory);
+    await pick(page, "deep");
+    await node(page, "c-0-0").locator("[data-toggle]").click();
+    await expect(node(page, "c-0-0-leaf")).toBeVisible();
+    const from = await center(node(page, "c-0-0-leaf"));
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(from.x, from.y + 8, { steps: 3 });
+    await page.mouse.move(from.x + 24, from.y, { steps: 10 });
+    const indicator = page.locator("[data-drop-indicator]");
+    await expect(indicator).toHaveAttribute("data-projected-depth", "2");
+    await expect(indicator).toHaveAttribute("data-depth-clamped", "false");
+    await page.mouse.up();
+    await expect(page.getByTestId("last-event")).toContainText(
+      '"nodeId":"c-0-0-leaf","fromParentId":"c-0-0","toParentId":"c-0-1"',
+    );
+    const flat = (await page.getByTestId("last-tree-ids").getAttribute("data-ids"))!.split(",");
+    expect(flat.every((id) => id.startsWith("c-"))).toBe(true);
+    await expect(node(page, "c-0-0-leaf")).toHaveAttribute("aria-level", "3");
   });
 
   test("deep: reorder of roots reports ids of the new tree only", async ({ page }) => {

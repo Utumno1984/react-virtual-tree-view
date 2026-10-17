@@ -82,7 +82,8 @@ type Story = StoryObj<typeof meta>;
  * Same buttons as `TreeView/DataSwap`, on a `DraggableTreeView` with `maxDepth={6}` (the
  * `deep` preset reaches exactly that depth). Each click recreates the preset from scratch,
  * so a reorder made on `small` is gone when you come back to it. `defaultExpandedIds` is
- * read on mount only: after a swap the new tree starts collapsed.
+ * read on mount only: after a swap the new tree starts collapsed (only ids that happen to
+ * coincide with already expanded ones stay expanded).
  *
  * Note: the development warning "data already exceeds maxDepth" is evaluated when
  * `maxDepth` changes, not when `data` changes, so swapping to a tree deeper than the limit

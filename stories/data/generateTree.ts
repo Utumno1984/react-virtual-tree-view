@@ -58,7 +58,7 @@ export function generateTree({
   disabledRatio = 0,
   withData = false,
   idPrefix = "node-",
-}:GenerateTreeOptions): TreeNode<FileMeta>[] {
+}: GenerateTreeOptions): TreeNode<FileMeta>[] {
   const total = Math.max(0, Math.floor(count));
   const rand = mulberry32(seed);
   // Independent stream for `isDisabled`, so the tree shape does not depend on `disabledRatio`.
