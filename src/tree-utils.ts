@@ -20,7 +20,7 @@ export interface Projection {
   /** Maximum depth allowed (previous node and `maxDepth` option, never below `minDepth`). */
   maxDepth: number;
   parentId: TreeId | null;
-  /** True when the projected depth was cut because of the `maxDepth` option. */
+  /** True when `maxDepth` affected the projection, including when it could not be honoured. */
   clamped: boolean;
 }
 
@@ -114,6 +114,13 @@ export function calculateNewParent<T>(
  * Drop projection (same algorithm as the dnd-kit "tree" example) with an
  * optional `maxDepth` that also accounts for the height of the dragged subtree.
  * Returns `null` if the active or over id is not in the list.
+ *
+ * Known limit with non-conforming data: if the list already contains rows deeper than
+ * `maxDepth`, the final slot can be right above a row deeper than `maxDepth` (also after moving
+ * past the rows that are too deep for the subtree), or the dragged subtree can be taller than
+ * `maxDepth`: the result then stays beyond the limit. `clamped` is `true` there but also for
+ * ordinary cuts, so check `depth + getSubtreeHeight(node) > maxDepth` (your `maxDepth`, not
+ * `projection.maxDepth`). Details and recipes: "Known limit with non-conforming data" in the README.
  */
 export function getProjection<T>(
   flattened: readonly FlattenedNode<T>[],

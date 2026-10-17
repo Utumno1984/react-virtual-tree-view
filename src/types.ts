@@ -119,6 +119,13 @@ export interface DraggableTreeViewProps<T = unknown> extends TreeViewProps<T> {
    * (the drop is not refused). Must be a non-negative integer; anything else warns in
    * development and means no limit. `data` that already exceeds it is shown as is (with a
    * development warning): the limit only applies to new drops.
+   *
+   * Known limit with such data: a drop can still end up beyond the limit when the final slot
+   * (also after moving past the rows that are too deep for the dragged subtree) is right above
+   * a row deeper than `maxDepth`, or when the dragged subtree is already taller than `maxDepth`.
+   * `Projection.clamped` is `true` there but also for ordinary cuts; the overshoot is
+   * `depth + getSubtreeHeight(node) > maxDepth`. Recipes (including how to get the node in
+   * `renderDropIndicator` and `onTreeChange`): "Known limit with non-conforming data" in the README.
    */
   maxDepth?: number;
   /**
@@ -135,8 +142,10 @@ export interface DraggableTreeViewProps<T = unknown> extends TreeViewProps<T> {
    * Content of the drop indicator shown while dragging, for styling it. It is wrapped in an
    * element (`data-drop-indicator`, `data-projected-depth`) already positioned between the two
    * rows and indented to `projection.depth * indentation`. Defaults to a minimal line.
-   * The wrapper also carries `data-depth-clamped` ("true" when `maxDepth` cut the
-   * projection); `projection.clamped` is available here too.
+   * The wrapper also carries `data-depth-clamped`, the same as `projection.clamped` (see
+   * `Projection`): `maxDepth` affected the projection, which includes cases where it could not
+   * be honoured (see `maxDepth`). It receives only the projection; to read the dragged node use
+   * `useDndContext().active?.id` in a component you return (README).
    */
   renderDropIndicator?: (projection: Projection) => React.ReactNode;
 }

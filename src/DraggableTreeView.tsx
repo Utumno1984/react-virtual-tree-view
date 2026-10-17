@@ -233,6 +233,9 @@ ForwardedDraggableTreeView.displayName = "DraggableTreeView";
  * moving up, after it when moving down), so dropping on a row of a different parent moves the
  * node there (unlike a plain same-parent reorder). The target parent is expanded right after
  * `onTreeChange` is called, even if the consumer ignores the new tree.
+ *
+ * `maxDepth` known limit with non-conforming `data` (a drop can end up beyond the limit, and
+ * `clamped` alone does not tell): see `DraggableTreeViewProps.maxDepth` and the README.
  */
 export const DraggableTreeView = ForwardedDraggableTreeView as <T = unknown>(
   props: DraggableTreeViewProps<T> & { ref?: ForwardedRef<TreeViewHandle> },

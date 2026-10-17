@@ -21,6 +21,7 @@ export {
   getSubtreeHeight,
   findDuplicateIds,
   getAncestorIds,
+  findNodeById,
   getSiblingDropTarget,
   getDropTarget,
 } from "./tree-utils";
