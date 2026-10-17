@@ -16,7 +16,7 @@ import type {
   ReactNode,
 } from "react";
 import { collectMatches, getMatchRanges, normalizeQuery } from "./search";
-import { findDuplicateIds, flattenTree, getDropTarget } from "./tree-utils";
+import { collectIds, findDuplicateIds, flattenTree, getDropTarget } from "./tree-utils";
 import type { DropTarget, FlattenedNode, TreeId } from "./tree-utils";
 import type { TreeDndAdapter } from "./dnd-internal";
 import { createProjectionCache } from "./projection-cache";
@@ -93,9 +93,37 @@ function TreeViewInner<T = unknown>(
     () => new Set(defaultExpandedIds),
   );
 
-  const [uncontrolledSelectedId, setUncontrolledSelectedId] = useState<TreeId | undefined>(
+  const [uncontrolledSelectedState, setUncontrolledSelectedId] = useState<TreeId | undefined>(
     defaultSelectedId,
   );
+
+  // Every id of the whole new tree (not just the visible rows): one O(n) pass per `data`.
+  const allIds = useMemo(() => collectIds(data), [data]);
+  // When `data` is replaced, ids that no longer exist in it are dropped from the internal
+  // state (uncontrolled selection, expanded nodes) silently: no `onSelect` and no
+  // `onExpandedChange`, since it is a consequence of the new `data`, not a user action.
+  // Done during render so a stale selection is never painted. Ids that are only hidden
+  // (closed branch, search filter) still exist in `data` and are kept.
+  const [reconciledData, setReconciledData] = useState(data);
+  let uncontrolledSelectedId = uncontrolledSelectedState;
+  let expandedNow = expanded;
+  if (reconciledData !== data) {
+    setReconciledData(data);
+    if (uncontrolledSelectedId !== undefined && !allIds.has(uncontrolledSelectedId)) {
+      uncontrolledSelectedId = undefined;
+      setUncontrolledSelectedId(undefined);
+    }
+    let kept: Set<TreeId> | null = null;
+    for (const id of expanded) {
+      if (allIds.has(id)) continue;
+      kept ??= new Set(expanded);
+      kept.delete(id);
+    }
+    if (kept) {
+      expandedNow = kept;
+      setExpanded(kept);
+    }
+  }
   // `selectedId={undefined}` means uncontrolled; `null` is a controlled "nothing selected".
   const currentSelectedId = selectedId !== undefined ? selectedId : uncontrolledSelectedId;
 
@@ -113,14 +141,14 @@ function TreeViewInner<T = unknown>(
   } | null>(null);
   if (searchToggles && searchToggles.query !== normalizedQuery) setSearchToggles(null);
   const effectiveExpanded = useMemo<ReadonlySet<TreeId>>(() => {
-    if (!search) return expanded;
+    if (!search) return expandedNow;
     if (!searchToggles || searchToggles.query !== search.query) return search.expandedIds;
     const next = new Set(search.expandedIds);
     for (const id of searchToggles.toggled) {
       if (!next.delete(id)) next.add(id);
     }
     return next;
-  }, [search, searchToggles, expanded]);
+  }, [search, searchToggles, expandedNow]);
 
   // While a node is dragged its descendants are hidden: lay out as if it were collapsed.
   const activeDragId = dnd?.activeId ?? null;
@@ -232,6 +260,22 @@ function TreeViewInner<T = unknown>(
     }
   }, [height, rows.length, rowHeight, viewport]);
 
+  // Controlled `selectedId` pointing at an id missing from `data`: the library never changes
+  // it, it only warns (development), once per missing id.
+  const warnedMissingSelected = useRef<TreeId | null>(null);
+  useEffect(() => {
+    if (selectedId === undefined || selectedId === null || allIds.has(selectedId)) {
+      warnedMissingSelected.current = null;
+      return;
+    }
+    if (!isDevelopment() || warnedMissingSelected.current === selectedId) return;
+    warnedMissingSelected.current = selectedId;
+    console.warn(
+      `[react-virtual-tree-view] The controlled selectedId "${String(selectedId)}" does not exist in \`data\`. ` +
+        "The selection is left untouched: update `selectedId` together with `data`.",
+    );
+  }, [selectedId, allIds]);
+
   const warnedDuplicates = useRef("");
 
   useEffect(() => {
@@ -327,6 +371,7 @@ function TreeViewInner<T = unknown>(
     rows: keyboardRows,
     firstIndexById,
     selectedIndex,
+    knownIds: allIds,
     containerRef,
     scrollToIndex,
     toggle,
@@ -339,7 +384,8 @@ function TreeViewInner<T = unknown>(
   // out of the window too, the first rendered row takes the tabindex instead.
   const { focusedIndex, anchored, hasFocus } = keyboard;
   const focusedInWindow = focusedIndex >= start && focusedIndex < end;
-  const keepTarget = anchored || hasFocus;
+  // An empty tree has no roving row (focusedIndex -1): nothing to keep mounted.
+  const keepTarget = focusedIndex >= 0 && (anchored || hasFocus);
   const tabbableIndex = focusedInWindow || keepTarget ? focusedIndex : start;
   const renderedIndexes: number[] = [];
   for (let i = start; i < end; i++) renderedIndexes.push(i);
@@ -498,7 +544,6 @@ function TreeViewInner<T = unknown>(
         })()
       : null;
 
-  // Ids in `expandedIds` that no longer exist in `data` are ignored but kept in the set.
   return (
     <>
       <div

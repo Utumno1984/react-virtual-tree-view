@@ -10,11 +10,20 @@ import type { DatasetName } from "./data/dataSwapPresets";
 const Icon = ({ isExpanded }: RenderNodeState) =>
   isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />;
 
-function DataSwapDemo({ initial = "small" }: { initial?: DatasetName }) {
+function DataSwapDemo({
+  initial = "small",
+  controlled = false,
+}: {
+  initial?: DatasetName;
+  /** Drive the selection with `selectedId` instead of leaving it to the tree. */
+  controlled?: boolean;
+}) {
   const [name, setName] = useState<DatasetName>(initial);
   const [data, setData] = useState<TreeNode[]>(() => createDataset(initial));
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string>("none");
+  const [controlledId, setControlledId] = useState<string | number | null>(null);
+  const [expandedEvents, setExpandedEvents] = useState(0);
   return (
     <div className="w-80 space-y-2">
       <DatasetBar
@@ -40,7 +49,12 @@ function DataSwapDemo({ initial = "small" }: { initial?: DatasetName }) {
         height={400}
         defaultExpandedIds={["a-docs"]}
         aria-label="Swappable tree"
-        onSelect={(id, node) => setSelected(`${id}|${node.label}`)}
+        selectedId={controlled ? controlledId : undefined}
+        onSelect={(id, node) => {
+          setSelected(`${id}|${node.label}`);
+          setControlledId(id);
+        }}
+        onExpandedChange={() => setExpandedEvents((count) => count + 1)}
         className="rounded border border-gray-200 bg-white p-2 text-sm text-gray-800"
         rowClassName={(state) =>
           `flex items-center gap-1 rounded px-1 py-1 hover:bg-gray-100 ${
@@ -67,6 +81,9 @@ function DataSwapDemo({ initial = "small" }: { initial?: DatasetName }) {
       <p data-testid="selected" className="text-xs text-gray-600">
         {selected}
       </p>
+      <p data-testid="expanded-events" className="text-xs text-gray-600">
+        {expandedEvents}
+      </p>
     </div>
   );
 }
@@ -82,12 +99,36 @@ type Story = StoryObj<typeof meta>;
 /**
  * The buttons replace the whole `data` prop of the same mounted `TreeView` (no `key`
  * change): `small` (hand-written, ids `a-`), `large` (1200 generated nodes, ids `b-`),
- * `deep` (narrow, 7 levels, ids `c-`), `empty` and `single` (one node, id `d-solo`).
- * Id spaces are disjoint, so no id of the old tree can survive a swap.
+ * `deep` (narrow, 7 levels, ids `c-`), `empty`, `single` (one node, id `d-solo`) and
+ * `variant` (the ids of `small`, with other labels and some nodes removed).
+ * `small`, `large`, `deep` and `single` have disjoint id spaces; `variant` shares ids with
+ * `small`.
  *
- * `defaultExpandedIds` is read on mount only: after a swap the new tree starts collapsed
- * (only ids that happen to coincide stay expanded). The search field is kept across swaps
- * and recomputed on the new tree. What happens to the selection when its id disappears is
- * not specified here.
+ * What a swap does to the internal state (uncontrolled selection):
+ *
+ * - the selected id is not in the new tree (select a `small` node, click `large`): the
+ *   selection is reset, no `treeitem` is `aria-selected`, `onSelect` is not called;
+ * - the selected id is only hidden (closed branch, search filter) but exists in the new tree:
+ *   the selection stays;
+ * - the selected id exists in both trees (select `a-cv`, click `variant`): it stays selected
+ *   and shows the new label. The id is the node's identity, not its content;
+ * - expanded nodes and the keyboard-focused node whose id disappeared are dropped silently,
+ *   without `onExpandedChange` (the counter below the tree does not move) and an id that
+ *   comes back later is not expanded again. Exactly one `treeitem` keeps `tabindex=0`.
+ *
+ * `defaultExpandedIds` is read on mount only, so `a-docs` is expanded at first and is not
+ * again once a swap to a tree without it has removed it. The search field is kept across
+ * swaps and recomputed on the new tree. Whoever swaps `data` must also reset its own state
+ * tied to the old nodes (the library has no callback for the reset).
  */
 export const Default: Story = {};
+
+/**
+ * Same swaps with a controlled `selectedId`. The library never touches it: after selecting a
+ * `small` node and clicking `large`, the selection state still holds the old id (nothing is
+ * highlighted, because the id is not in the tree) and, in development, the console shows
+ * `[react-virtual-tree-view] The controlled selectedId "..." does not exist in data`, once
+ * per missing id (never in a production build). It is up to the parent to update
+ * `selectedId` together with `data`.
+ */
+export const ControlledSelection: Story = { args: { controlled: true } };
