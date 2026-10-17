@@ -9,13 +9,19 @@ import type { FileMeta } from "../stories/data/generateTree";
 const url = (name: string) => storyUrl(`treeview-nodemetadata--${name}`);
 const panel = (page: Page) => page.getByTestId("metadata-panel");
 
-function findIn(nodes: TreeNode<FileMeta>[], id: string): TreeNode<FileMeta> {
+function search(nodes: TreeNode<FileMeta>[], id: string): TreeNode<FileMeta> | undefined {
   for (const n of nodes) {
     if (n.id === id) return n;
-    const inner: TreeNode<FileMeta> | undefined = n.children && findIn(n.children, id);
+    const inner = n.children && search(n.children, id);
     if (inner) return inner;
   }
-  throw new Error(`no node ${id}`);
+  return undefined;
+}
+
+function findIn(nodes: TreeNode<FileMeta>[], id: string): TreeNode<FileMeta> {
+  const found = search(nodes, id);
+  if (!found) throw new Error(`no node ${id}`);
+  return found;
 }
 
 async function expectPanelFor(page: Page, id: string) {
@@ -84,7 +90,7 @@ test.describe("node metadata", () => {
   test("a disabled node (with data) does not change the panel", async ({ page }) => {
     await page.goto(url("node-metadata"));
     await expect(panel(page)).toContainText("Seleziona un nodo");
-    await node(page, "locked").click();
+    await node(page, "locked").click({ force: true });
     await expect(panel(page)).toContainText("Seleziona un nodo");
     await expect(panel(page)).not.toContainText("elena");
 
