@@ -302,7 +302,7 @@ ForwardedDraggableTreeView.displayName = "DraggableTreeView";
  * The row under the pointer and the vertical band of that row decide where the node lands
  * (the horizontal position is irrelevant): the upper ~25% makes it the previous sibling of
  * the row, the middle ~50% makes it a child of the row (its FIRST child), the lower ~25% makes
- * it the next sibling (after the row's visible subtree). A live indicator shows the result: a
+ * it the next sibling (or the first child, if the row is expanded with visible children). A live indicator shows the result: a
  * line for the two sibling bands, a highlight of the whole row for "becomes a child". The
  * dragged node's descendants are hidden meanwhile and travel with it. Dropping on a collapsed
  * parent expands it. Trees with duplicate ids never report a move and show no indicator. The

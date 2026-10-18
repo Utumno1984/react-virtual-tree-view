@@ -156,12 +156,12 @@ describe("getDropTarget with maxDepth: rows already at the limit", () => {
     // docs (height 1) next to c1 (depth 2) would sit at depth 2 -> cv at 3 > 2
     expect(getDropTarget(rows, "docs", at("c1", rows), "before", 2, 1)).toBeNull();
     expect(getDropTarget(rows, "docs", at("c1", rows), "after", 2, 1)).toBeNull();
-    // next to c (depth 1) it fits, and the slot is just above/below c's row (below c1 for after)
+    // next to c (depth 1) it fits above c's row; c's lower band is its first-child zone
+    // (depth 2, cv would be at 3): refused, not demoted to a sibling
     const before = getDropTarget(rows, "docs", at("c", rows), "before", 2, 1)!;
     expect(before.slot).toBe(at("c", rows));
     expect(before.projection.depth).toBe(1);
-    const after = getDropTarget(rows, "docs", at("c", rows), "after", 2, 1)!;
-    expect(after.slot).toBe(at("c1", rows) + 1);
+    expect(getDropTarget(rows, "docs", at("c", rows), "after", 2, 1)).toBeNull();
   });
 
   it("without maxDepth every zone is available", () => {

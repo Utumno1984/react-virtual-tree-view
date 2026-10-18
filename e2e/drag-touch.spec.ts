@@ -62,8 +62,8 @@ test.describe("DraggableTreeView touch", () => {
     await expect(node(page, "misc")).toBeVisible();
     const cdp = await page.context().newCDPSession(page);
     const start = await center(page, "A");
-    // lower zone of the expanded "C": next sibling of C, after its subtree
-    const end = await zone(page, "C", "after");
+    // upper zone of "D": next sibling of C, after its subtree
+    const end = await zone(page, "D", "before");
 
     await longPressAndMove(page, cdp, start, [
       { x: start.x, y: start.y + 6 },

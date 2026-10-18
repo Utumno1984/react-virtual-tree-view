@@ -153,7 +153,8 @@ type Story = StoryObj<typeof meta>;
 /**
  * Drag a row over another: the upper quarter of the target row drops it as the previous
  * sibling (line above), the middle half makes it the first child (the whole row is
- * highlighted), the lower quarter makes it the next sibling (line below). The indicator shows
+ * highlighted), the lower quarter makes it the next sibling (line below), or the first child when the row is
+ * expanded (line right under the row). The indicator shows
  * the result live; the last `onTreeChange` event is logged below.
  */
 export const Draggable: Story = {
@@ -173,6 +174,25 @@ export const IgnoredChanges: Story = {
 /** With a search query active nothing can be dragged (rows have `data-drag-disabled`). */
 export const DragDisabledWhileSearching: Story = {
   args: { initialData: initialTree, defaultExpandedIds: ["p", "C", "docs"], initialQuery: "a" },
+};
+
+const longSubtreeTree: TreeNode[] = [
+  { id: "X", label: "X" },
+  {
+    id: "P",
+    label: "Parent with 200 children",
+    children: Array.from({ length: 200 }, (_, i): TreeNode => ({ id: `P-${i}`, label: `Child ${i}` })),
+  },
+  { id: "Q", label: "Q" },
+];
+
+/**
+ * An expanded parent with 200 visible children. The lower quarter of the "P" row is its FIRST
+ * child (the line sits right under the row, next to the pointer, never 200 rows away); the next
+ * sibling of "P" is reached with the upper quarter of "Q".
+ */
+export const LongSubtree: Story = {
+  args: { initialData: longSubtreeTree, defaultExpandedIds: ["P"], height: 300 },
 };
 
 /** 1500 nodes: the drop target is resolved once on release, not on every pointer move. */

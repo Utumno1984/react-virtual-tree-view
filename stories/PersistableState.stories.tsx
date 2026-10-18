@@ -172,7 +172,7 @@ export const ControlledSelection: Story = {
 };
 
 /**
- * `DraggableTreeView` forwards the same props. Drag "README.md" one indentation to the right to
- * nest it under the collapsed "Pictures": the drop expands it and `onStateChange` reports it.
+ * `DraggableTreeView` forwards the same props. Drag "README.md" onto the middle of the collapsed
+ * "Pictures" row to nest it there: the drop expands it and `onStateChange` reports it.
  */
 export const Draggable: Story = { args: { draggable: true } };

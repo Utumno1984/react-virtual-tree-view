@@ -111,9 +111,14 @@ describe("getProjection", () => {
     expect(getProjection(flat(), "g", "c", "before")).toMatchObject({ depth: 2, parentId: "b" });
   });
 
-  it("after: sibling of the hovered row, same depth and parent", () => {
-    expect(getProjection(flat(), "g", "b", "after")).toMatchObject({ depth: 1, parentId: "a" });
-    expect(getProjection(flat(), "c", "e", "after")).toMatchObject({ depth: 0, parentId: null });
+  it("after: sibling of the hovered leaf, same depth and parent", () => {
+    expect(getProjection(flat(), "g", "d", "after")).toMatchObject({ depth: 1, parentId: "a" });
+    expect(getProjection(flat(), "c", "g", "after")).toMatchObject({ depth: 0, parentId: null });
+  });
+
+  it("after on an expanded row with visible children: first child of that row", () => {
+    expect(getProjection(flat(), "g", "b", "after")).toMatchObject({ depth: 2, parentId: "b" });
+    expect(getProjection(flat(), "c", "e", "after")).toMatchObject({ depth: 1, parentId: "e" });
   });
 
   it("inside: child of the hovered row, one level deeper", () => {

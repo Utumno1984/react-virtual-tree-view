@@ -288,7 +288,12 @@ the drop. The horizontal position is irrelevant (this also makes it work the sam
 |---|---|---|
 | upper ~25% | previous sibling of the row | a line above the row |
 | middle ~50% | **first child** of the row (a collapsed parent is expanded on drop) | the whole row highlighted |
-| lower ~25% | next sibling of the row, after its whole visible subtree if it is expanded | a line below the row (or its subtree) |
+| lower ~25% | next sibling of the row if it is collapsed or a leaf; **first child** of the row if it is expanded with visible children | a line right below the row (indented one level more when it is a first child) |
+
+The line is therefore always next to the pointer, even under an expanded row with hundreds of
+children. To drop a node after an expanded row's subtree, use the upper band of the next row or the
+lower band of the subtree's last row. With `maxDepth`, the first-child reading of an expanded row's
+lower band is refused (not demoted to a sibling) when it would exceed the limit.
 
 Not valid targets (no indicator, nothing happens on release): the dragged node itself, and with
 `maxDepth` a zone that would put the node or any descendant deeper than the limit (the "child" zone
@@ -298,6 +303,9 @@ children and siblings like any other row.
 
 The indicator wrapper carries `data-drop-zone` (`before` / `inside` / `after`) and
 `data-drop-mode` (`line` / `child`), and `renderDropIndicator` receives `projection.zone`.
+A custom `renderDropIndicator` that ignores `projection.zone` draws the same line for `"inside"` as
+for `"before"` (at the top of the hovered row, at `left: 0`), which is easy to mistake for "previous
+sibling": branch on `projection.zone` (for `"inside"`, highlight the whole row instead).
 `projection.clamped` is always `false` and `minDepth` / `maxDepth` always equal `depth`: they are kept
 only for compatibility. If `data` already has nodes deeper than `maxDepth` the drop is not refused
 because of that data, only because of where the node would land.

@@ -697,6 +697,8 @@ function TreeViewInner<T = unknown>(
       const el = containerRef.current;
       const content = contentRef.current;
       if (search || !el || !content || rows.length === 0) return null;
+      // A zero / non-finite row height would turn the row position into NaN (zone "inside").
+      if (!(rowHeight > 0) || !Number.isFinite(rowHeight)) return null;
       const rect = geometry ? geometry.rect : el.getBoundingClientRect();
       if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) return null;
       // Rows are positioned inside the content element, which already moves with the

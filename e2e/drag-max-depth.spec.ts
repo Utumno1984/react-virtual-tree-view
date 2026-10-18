@@ -20,6 +20,7 @@ test.describe("DraggableTreeView maxDepth", () => {
     await expect(page.getByTestId("max-depth")).toContainText("maxDepth = 2");
     // C1 is at depth 2: "becomes a child" would be depth 3 > 2, refused
     await dragToZone(page, node(page, "A"), node(page, "C1"), "inside");
+    await expect(page.locator("[data-drag-overlay]")).toBeVisible();
     await expect(indicator(page)).toHaveCount(0);
     await page.mouse.up();
     await expect(log(page)).toContainText("none yet");
@@ -50,6 +51,7 @@ test.describe("DraggableTreeView maxDepth", () => {
     await page.goto(story("default"));
     // C has a child (height 1): as a child of B it would be depth 2 and its child depth 3, refused
     await dragToZone(page, node(page, "C"), node(page, "B"), "inside");
+    await expect(page.locator("[data-drag-overlay]")).toBeVisible();
     await expect(indicator(page)).toHaveCount(0);
     // same level as B (depth 1) fits: C -> 1, C1 -> 2
     await dragToZone(page, node(page, "C"), node(page, "A"), "before");
@@ -68,6 +70,7 @@ test.describe("DraggableTreeView maxDepth", () => {
   }) => {
     await page.goto(story("roots-only"));
     await dragToZone(page, node(page, "tail"), node(page, "misc"), "inside");
+    await expect(page.locator("[data-drag-overlay]")).toBeVisible();
     await expect(indicator(page)).toHaveCount(0);
     await page.mouse.up();
     await expect(log(page)).toContainText("none yet");

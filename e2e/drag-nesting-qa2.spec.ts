@@ -26,8 +26,9 @@ test.describe("nesting QA round 2 (LargeTree)", () => {
       // middle of the third root: the second root becomes its (first) child
       await drag(page, id, target, "inside");
       await expect(node(page, id)).toHaveAttribute("aria-level", "2");
-      // lower quarter of the target root (open now): next root, past its visible subtree
-      await drag(page, id, target, "after");
+      // upper quarter of the root after the target (the target is open now): the id becomes a
+      // root again, after the target's visible subtree
+      await drag(page, id, before[3]!, "before");
       await expect(node(page, id)).toHaveAttribute("aria-level", "1");
     }
     // the target stays expanded after the first nesting (by design); the moved node is a root again, now the 3rd of the roots

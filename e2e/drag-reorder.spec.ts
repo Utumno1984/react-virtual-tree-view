@@ -30,7 +30,7 @@ test.describe("DraggableTreeView reorder", () => {
     await page.goto(story("draggable"));
     await expect(node(page, "misc")).toBeVisible();
     expect(await order(page)).toEqual(["p", "A", "B", "C", "C1", "D", "docs", "cv", "notes", "misc"]);
-    await dragTo(page, "A", await zonePoint(node(page, "C"), "after"));
+    await dragTo(page, "A", await zonePoint(node(page, "D"), "before"));
     await page.mouse.up();
     // C1 is C's child: the subtree stays under C, and A lands after C's visible subtree.
     await expect

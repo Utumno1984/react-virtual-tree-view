@@ -103,13 +103,49 @@ describe("getDropTarget: zones of the hovered row", () => {
     expect(moveNode(t, "B", r.parentId, r.index).tree).toEqual([n("A", [n("B")])]);
   });
 
-  it("lower band of an expanded row drops after its whole visible subtree", () => {
+  it("lower band of an expanded row with visible children is its FIRST child, line right below the row", () => {
     const r = target(tree(), open, "A", "C", "after")!;
-    expect(r).toMatchObject({ parentId: "p", index: 2, isNoop: false });
-    // C's row and its child c1 are rows 3-4: the line goes below c1
-    expect(r.slot).toBe(5);
+    expect(r).toMatchObject({ parentId: "C", index: 0, isNoop: false });
+    // C is row 3: the line is above row 4 (c1), adjacent to C
+    expect(r.slot).toBe(4);
+    expect(r.projection).toMatchObject({ depth: 2, zone: "after", parentId: "C" });
+    expect(childrenAfter(tree(), "A", r)).toEqual(["A", "c1"]);
+  });
+
+  it("lower band of a collapsed row or a leaf is still the next sibling", () => {
+    const collapsed = target(tree(), ["p"], "A", "C", "after")!;
+    expect(collapsed).toMatchObject({ parentId: "p", index: 2, slot: 4 });
+    expect(collapsed.projection.depth).toBe(1);
+    expect(target(tree(), open, "A", "c1", "after")).toMatchObject({ parentId: "C", index: 1, slot: 5 });
+  });
+
+  it("a very long expanded subtree: the lower band keeps the line adjacent to the row", () => {
+    const kids = Array.from({ length: 200 }, (_, i) => n(`k${i}`));
+    const t: TreeNode[] = [n("P", kids), n("Q"), n("X")];
+    const r = target(t, ["P"], "X", "P", "after")!;
+    expect(r).toMatchObject({ parentId: "P", index: 0, slot: 1 });
     expect(r.projection.depth).toBe(1);
-    expect(childrenAfter(tree(), "A", r)).toEqual(["B", "C", "A", "D"]);
+    // the next sibling position stays reachable from the last child's row / the next row's top
+    expect(target(t, ["P"], "X", "Q", "before")).toMatchObject({ parentId: null, index: 1, slot: 201 });
+  });
+
+  it("the lower band of an expanded row respects maxDepth as a child (invalid, not demoted)", () => {
+    // C is at depth 1 with a visible child: its first-child zone is depth 2
+    expect(target(tree(), open, "A", "C", "after", 2)).toMatchObject({ parentId: "C", index: 0 });
+    expect(target(tree(), open, "A", "C", "after", 1)).toBeNull();
+    // p (depth 0) with maxDepth 1: a height-1 node (C) may not be its first child via the lower band
+    expect(target(tree(), open, "C", "p", "after", 1)).toBeNull();
+  });
+
+  it("the dragged node as first child of an expanded row: the lower band is a no-op", () => {
+    expect(target(tree(), open, "A", "p", "after")).toMatchObject({ parentId: "p", index: 0, slot: 1, isNoop: true });
+    expect(target(tree(), open, "B", "p", "after")).toMatchObject({ parentId: "p", index: 0, isNoop: false });
+  });
+
+  it("returns null for a zero, NaN or fractional row index", () => {
+    const flat = flattenTree(tree(), new Set(open));
+    expect(getDropTarget(flat, "A", Number.NaN, "inside")).toBeNull();
+    expect(getDropTarget(flat, "A", 1.5, "inside")).toBeNull();
   });
 
   it("upper band of the first row and lower band of the last row work at the margins", () => {
@@ -204,12 +240,17 @@ describe("getDropTarget: isNoop", () => {
   it("an only child dropped next to its parent's level or inside its parent differently is not a no-op", () => {
     const t: TreeNode[] = [n("p", [n("A"), n("C", [n("C1")]), n("D")])];
     expect(target(t, ["p", "C"], "C1", "C", "inside")).toMatchObject({ parentId: "C", index: 0, isNoop: true });
-    expect(target(t, ["p", "C"], "C1", "C", "after")).toMatchObject({ parentId: "p", index: 2, isNoop: false });
+    // the lower band of expanded C is its first-child zone, which is where C1 already is
+    expect(target(t, ["p", "C"], "C1", "C", "after")).toMatchObject({ parentId: "C", index: 0, isNoop: true });
+    expect(target(t, ["p", "C"], "C1", "D", "before")).toMatchObject({ parentId: "p", index: 2, isNoop: false });
   });
 
   it("the first root after itself is a no-op, the last root before itself too", () => {
     expect(target(tree(), open, "p", "q", "before")!.isNoop).toBe(true);
-    expect(target(tree(), open, "q", "p", "after")!.isNoop).toBe(true);
+    // p collapsed: its lower band is "next sibling", which is where q already is
+    expect(target(tree(), [], "q", "p", "after")!.isNoop).toBe(true);
+    // p expanded: the lower band is its first-child zone
+    expect(target(tree(), open, "q", "p", "after")).toMatchObject({ parentId: "p", index: 0, isNoop: false });
   });
 
   it("two drags over the same row and zone give different targets for different dragged nodes", () => {

@@ -17,11 +17,16 @@ test.describe("DraggableTreeView nesting QA", () => {
     if (!row) throw new Error("row not visible");
     const middle = row.x + row.width / 2;
     await startDrag(page, node(page, "misc"));
-    // lower quarter of the open "docs": next root, depth 0, at both horizontal extremes
+    // upper quarter of "docs": previous root, depth 0, at both horizontal extremes
+    await moveToZone(page, node(page, "docs"), "before", tree.x + 2 - middle);
+    await expect(indicator(page)).toHaveAttribute("data-projected-depth", "0");
+    await moveToZone(page, node(page, "docs"), "before", tree.x + tree.width - 2 - middle);
+    await expect(indicator(page)).toHaveAttribute("data-projected-depth", "0");
+    // lower quarter of the open "docs": its first child, depth 1, at both extremes
     await moveToZone(page, node(page, "docs"), "after", tree.x + 2 - middle);
-    await expect(indicator(page)).toHaveAttribute("data-projected-depth", "0");
+    await expect(indicator(page)).toHaveAttribute("data-projected-depth", "1");
     await moveToZone(page, node(page, "docs"), "after", tree.x + tree.width - 2 - middle);
-    await expect(indicator(page)).toHaveAttribute("data-projected-depth", "0");
+    await expect(indicator(page)).toHaveAttribute("data-projected-depth", "1");
     // middle of "docs": child, depth 1, at both extremes
     await moveToZone(page, node(page, "docs"), "inside", tree.x + 2 - middle);
     await expect(indicator(page)).toHaveAttribute("data-projected-depth", "1");

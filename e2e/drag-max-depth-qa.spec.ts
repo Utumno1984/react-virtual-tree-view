@@ -18,6 +18,7 @@ test.describe("maxDepth QA", () => {
     await page.goto(maxStory("roots-only"));
     // as a child of misc it would be deeper: refused
     await dragToZone(page, node(page, "C"), node(page, "misc"), "inside");
+    await expect(page.locator("[data-drag-overlay]")).toBeVisible();
     await expect(indicator(page)).toHaveCount(0);
     // as a root (the shallowest depth) it is allowed even though its child exceeds the limit
     await dragToZone(page, node(page, "C"), node(page, "misc"), "after");
@@ -35,9 +36,18 @@ test.describe("maxDepth QA", () => {
     // docs (height 1) needs depth <= 1; C1 is at depth 2, so every zone of its row is refused
     for (const zone of ["before", "inside", "after"] as const) {
       await dragToZone(page, node(page, "docs"), node(page, "C1"), zone);
+      // the drag is really running (so "no indicator" means "refused", not "never started")
+      await expect(page.locator("[data-drag-overlay]")).toBeVisible();
+      await expect(node(page, "docs")).toHaveAttribute("data-dragging", "");
       await expect(indicator(page)).toHaveCount(0);
       await page.mouse.up();
+      await expect(page.locator("[data-drag-overlay]")).toHaveCount(0);
     }
+    // positive control: the same drag over a row at depth 1 does show a line
+    await dragToZone(page, node(page, "docs"), node(page, "C"), "before");
+    await expect(indicator(page)).toHaveAttribute("data-projected-depth", "1");
+    await page.keyboard.press("Escape");
+    await page.mouse.up();
     // every treeitem must stay at aria-level <= maxDepth + 1 = 3
     expect(Math.max(...(await levels(page)))).toBeLessThanOrEqual(3);
   });

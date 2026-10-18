@@ -212,9 +212,10 @@ test.describe("checkable", () => {
 });
 
 test.describe("checkable: a parent emptied by dragging", () => {
-  // Lower zone of the parent "p": the node becomes its next sibling, at the root.
+  // Upper zone of the parent "p": the node becomes its previous sibling, at the root (the lower
+  // zone of an expanded "p" is its first-child zone).
   const dragLeft = async (page: Page, id: string) => {
-    await dragToZone(page, node(page, id), node(page, "p"), "after");
+    await dragToZone(page, node(page, id), node(page, "p"), "before");
     await page.mouse.up();
     // let the drop animation finish: a drag started during it is not picked up
     await expect(page.locator("[data-drag-overlay]")).toHaveCount(0);

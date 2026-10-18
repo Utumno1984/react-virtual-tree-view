@@ -62,9 +62,11 @@ describe("QA: tree-utils extra cases", () => {
     expect(p.parentId).toBeNull();
   });
   it("getProjection: maxDepth 0 allows only root-level drops", () => {
-    const p = getProjection(flat(), "g", "a", "after", 0)!;
+    const p = getProjection(flat(), "c", "g", "after", 0)!;
     expect(p.depth).toBe(0);
     expect(p.parentId).toBeNull();
+    // the lower band of an expanded row is its first-child zone: depth 1, refused
+    expect(getProjection(flat(), "g", "a", "after", 0)).toBeNull();
     expect(getProjection(flat(), "g", "a", "inside", 0)).toBeNull();
   });
   it("moveNode: duplicate ids among siblings never lose a node", () => {

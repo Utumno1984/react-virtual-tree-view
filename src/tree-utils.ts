@@ -190,8 +190,11 @@ export interface DropTarget {
  * - `"before"` (upper ~25% of the row): previous sibling of the row, same parent, right before it;
  * - `"inside"` (middle ~50%): child of the row, inserted as its FIRST child (so it shows right
  *   below the row once the parent is expanded; a collapsed parent is expanded on drop);
- * - `"after"` (lower ~25%): next sibling of the row. If the row is expanded this is after its
- *   whole visible subtree (`slot` is the first row past it).
+ * - `"after"` (lower ~25%): next sibling of the row, right after it, when the row is collapsed or
+ *   a leaf. On an EXPANDED row with visible children it is the FIRST CHILD instead (like
+ *   `"inside"`, but the line is drawn right below the row, `slot = overIndex + 1`), so the
+ *   indicator is always next to the pointer, even with a very long subtree. To drop after an
+ *   expanded row's subtree, use the upper band of the next row or the lower band of its last row.
  *
  * Not valid (`null`): the dragged node itself or one of its descendants, an out-of-range row,
  * an unknown `activeId`, and, with `maxDepth`, a zone that would put the node (with its whole
@@ -211,6 +214,7 @@ export function getDropTarget<T>(
   maxDepth?: number,
   subtreeHeight?: number,
 ): DropTarget | null {
+  if (!Number.isInteger(overIndex)) return null;
   const activeIndex = flattened.findIndex((n) => n.id === activeId);
   const active = flattened[activeIndex];
   const over = flattened[overIndex];
@@ -222,7 +226,11 @@ export function getDropTarget<T>(
     if (overIndex < end) return null;
   }
 
-  const depth = zone === "inside" ? over.depth + 1 : over.depth;
+  // The lower band of an expanded row with visible children is "first child" (the line shows
+  // right below the row, next to the pointer); only collapsed rows and leaves get "next sibling".
+  const next = flattened[overIndex + 1];
+  const asFirstChild = zone === "after" && next !== undefined && next.depth > over.depth;
+  const depth = zone === "inside" || asFirstChild ? over.depth + 1 : over.depth;
   if (maxDepth !== undefined) {
     const allowed = Math.max(0, maxDepth - (subtreeHeight ?? getSubtreeHeight(active.node)));
     if (depth > allowed) return null;
@@ -247,13 +255,15 @@ export function getDropTarget<T>(
   } else if (zone === "before") {
     index = position(overIndex, over.depth);
     slot = overIndex;
+  } else if (asFirstChild) {
+    index = 0;
+    slot = overIndex + 1;
   } else {
     index = position(overIndex, over.depth) + 1;
     slot = overIndex + 1;
-    while (slot < flattened.length && flattened[slot]!.depth > over.depth) slot++;
   }
 
-  const parentId = calculateNewParent(flattened, overIndex, zone);
+  const parentId = calculateNewParent(flattened, overIndex, asFirstChild ? "inside" : zone);
   let currentIndex = 0;
   for (let i = 0; i < activeIndex; i++) {
     const item = flattened[i]!;
