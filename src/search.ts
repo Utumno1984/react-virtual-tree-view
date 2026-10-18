@@ -230,7 +230,8 @@ const TERMS_PREFIX = "terms\u0000";
 
 /**
  * Cheap identity of a search (O(total length of the terms)): lets the caller memoize
- * `compileSearch` even when `searchTerms` is a new array on every render.
+ * `compileSearch` even when `searchTerms` is a new array on every render. Case changes give a
+ * new key (as they do for a plain `searchQuery`), surrounding spaces do not.
  * `null` when nothing is searched.
  */
 export function searchKey(
@@ -241,7 +242,8 @@ export function searchKey(
   let key = TERMS_PREFIX;
   let any = false;
   terms.forEach((raw, i) => {
-    const term = normalizeQuery(raw).toLowerCase();
+    // Trimmed but not lowercased: the reported `term` text must follow what was passed.
+    const term = normalizeQuery(raw);
     if (term !== "") {
       any = true;
       key += `${i}:${term}\u0000`;
@@ -278,9 +280,10 @@ export function compileSearch(
   if (key.startsWith(TERMS_PREFIX)) {
     const byTerm = new Map<string, number>();
     (searchTerms as ReadonlyArray<string>).forEach((raw, termIndex) => {
-      const lowered = normalizeQuery(raw).toLowerCase();
+      const trimmed = normalizeQuery(raw);
+      const lowered = trimmed.toLowerCase();
       if (lowered === "") {
-        inputs.push({ term: typeof raw === "string" ? raw : "", termIndex, active: false, pattern: -1 });
+        inputs.push({ term: trimmed, termIndex, active: false, pattern: -1 });
         return;
       }
       let pattern = byTerm.get(lowered);
@@ -290,7 +293,7 @@ export function compileSearch(
         patterns.push(lowered);
         patternTermIndex.push(termIndex);
       }
-      inputs.push({ term: raw, termIndex, active: true, pattern });
+      inputs.push({ term: trimmed, termIndex, active: true, pattern });
     });
   } else {
     patterns.push(key.toLowerCase());

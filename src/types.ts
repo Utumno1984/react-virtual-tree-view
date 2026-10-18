@@ -36,8 +36,8 @@ export interface RenderNodeState {
 /** Outcome of a search, handed to `onSearchResult` (e.g. to render one badge per term). */
 export interface SearchResult {
   /**
-   * One entry per element of `searchTerms` (as given), or a single one for `searchQuery`.
-   * Empty when nothing is searched.
+   * One entry per element of `searchTerms`, or a single one for `searchQuery` (`term` is the
+   * trimmed text, `""` for blank ones). Empty when nothing is searched.
    */
   terms: Array<{
     term: string;
