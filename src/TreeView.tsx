@@ -16,6 +16,7 @@ import type {
   ReactNode,
 } from "react";
 import { collectMatches, getMatchRanges, normalizeQuery } from "./search";
+import { normalizePersistableState, sameIdSet } from "./persistable-state";
 import { collectIds, findDuplicateIds, flattenTree, getDropTarget } from "./tree-utils";
 import type { DropTarget, FlattenedNode, TreeId } from "./tree-utils";
 import type { TreeDndAdapter } from "./dnd-internal";
@@ -66,6 +67,8 @@ function TreeViewInner<T = unknown>(
     selectedId,
     defaultSelectedId,
     onSelect,
+    onStateChange,
+    initialState,
     indentation = DEFAULT_INDENTATION,
     rowHeight: rowHeightProp = DEFAULT_ROW_HEIGHT,
     height,
@@ -89,14 +92,45 @@ function TreeViewInner<T = unknown>(
   // A non-positive or non-finite rowHeight would stack every row at top:0.
   const rowHeight =
     Number.isFinite(rowHeightProp) && rowHeightProp > 0 ? rowHeightProp : DEFAULT_ROW_HEIGHT;
-  const [expanded, setExpanded] = useState<ReadonlySet<TreeId>>(() => new Set(defaultExpandedIds));
-
-  const [uncontrolledSelectedState, setUncontrolledSelectedId] = useState<TreeId | undefined>(
-    defaultSelectedId,
-  );
 
   // Every id of the whole new tree (not just the visible rows): one O(n) pass per `data`.
   const allIds = useMemo(() => collectIds(data), [data]);
+
+  // `initialState` is read once, on mount: validated, cleaned of ids missing from `data`, and
+  // compared with the props that coexist with it (warnings are emitted by an effect below).
+  const [mount] = useState(() => {
+    if (initialState === undefined) return null;
+    const { state, problems } = normalizePersistableState(initialState);
+    const notes = [...problems];
+    const ignored = [
+      defaultExpandedIds !== undefined ? "defaultExpandedIds" : null,
+      defaultSelectedId !== undefined ? "defaultSelectedId" : null,
+    ].filter((name) => name !== null);
+    if (ignored.length > 0) {
+      notes.push(`${ignored.join(" and ")} ignored because initialState is set`);
+    }
+    if (normalizeQuery(state.searchQuery) !== normalizeQuery(searchQuery)) {
+      notes.push(
+        `initialState.searchQuery (${JSON.stringify(state.searchQuery)}) differs from the ` +
+          `searchQuery prop (${JSON.stringify(searchQuery ?? "")}): it is not applied, ` +
+          "initialize your search field with the same value",
+      );
+    }
+    return { state, notes };
+  });
+  const [expanded, setExpanded] = useState<ReadonlySet<TreeId>>(() =>
+    mount
+      ? new Set(mount.state.expandedIds.filter((id) => allIds.has(id)))
+      : new Set(defaultExpandedIds),
+  );
+
+  const [uncontrolledSelectedState, setUncontrolledSelectedId] = useState<TreeId | undefined>(() =>
+    mount
+      ? mount.state.selectedId !== null && allIds.has(mount.state.selectedId)
+        ? mount.state.selectedId
+        : undefined
+      : defaultSelectedId,
+  );
   // When `data` is replaced, ids that no longer exist in it are dropped from the internal
   // state (uncontrolled selection, expanded nodes) silently: no `onSelect` and no
   // `onExpandedChange`, since it is a consequence of the new `data`, not a user action.
@@ -140,6 +174,59 @@ function TreeViewInner<T = unknown>(
   }
   // `selectedId={undefined}` means uncontrolled; `null` is a controlled "nothing selected".
   const currentSelectedId = selectedId !== undefined ? selectedId : uncontrolledSelectedId;
+
+  // Persistable state: what the consumer last heard of (or, at mount, what it already has:
+  // the raw `initialState`, so that a cleanup of vanished ids counts as a change to report).
+  const stateQuery = searchQuery ?? "";
+  const [baseline] = useState<{
+    expanded: ReadonlySet<TreeId>;
+    selectedId: TreeId | null;
+    searchQuery: string;
+  }>(() => ({
+    expanded: new Set<TreeId>(mount ? mount.state.expandedIds : expandedNow),
+    selectedId:
+      selectedId !== undefined
+        ? selectedId
+        : mount
+          ? mount.state.selectedId
+          : (currentSelectedId ?? null),
+    searchQuery: stateQuery,
+  }));
+  const lastNotified = useRef(baseline);
+  const onStateChangeRef = useRef(onStateChange);
+  useEffect(() => {
+    onStateChangeRef.current = onStateChange;
+  });
+  const notifiedSelectedId = currentSelectedId ?? null;
+  useEffect(() => {
+    const last = lastNotified.current;
+    if (
+      sameIdSet(last.expanded, expandedNow) &&
+      last.selectedId === notifiedSelectedId &&
+      last.searchQuery === stateQuery
+    ) {
+      return;
+    }
+    lastNotified.current = {
+      expanded: expandedNow,
+      selectedId: notifiedSelectedId,
+      searchQuery: stateQuery,
+    };
+    onStateChangeRef.current?.({
+      expandedIds: [...expandedNow],
+      selectedId: notifiedSelectedId,
+      searchQuery: stateQuery,
+    });
+  }, [expandedNow, notifiedSelectedId, stateQuery]);
+
+  // One development warning per mount (refs survive StrictMode's simulated remount).
+  const warnedInitialState = useRef(false);
+  useEffect(() => {
+    if (!mount || mount.notes.length === 0 || warnedInitialState.current || !isDevelopment())
+      return;
+    warnedInitialState.current = true;
+    console.warn(`[react-virtual-tree-view] initialState: ${mount.notes.join("; ")}.`);
+  }, [mount]);
 
   // One O(n) pass per (data, normalized query): matches, their ancestors and the ids to
   // expand. Keyed on the trimmed query so "foo" -> "foo " does not redo the pass.

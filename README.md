@@ -121,6 +121,67 @@ function SearchableTree({ query }: { query: string }) {
 
 Uncontrolled selection: `<TreeView data={files} defaultSelectedId="cv" aria-label="Files" />`.
 
+### Persisting the tree state
+
+`onStateChange` hands you one JSON-serializable object, `TreeViewPersistableState`
+(`{ expandedIds, selectedId, searchQuery }`, only ids and a string), and `initialState` takes it
+back on the next mount:
+
+```tsx
+import { useState } from "react";
+import { TreeView } from "react-virtual-tree-view";
+import type { TreeNode, TreeViewPersistableState } from "react-virtual-tree-view";
+
+function PersistedTree({ data, isLoading }: { data: TreeNode[]; isLoading: boolean }) {
+  // Read the saved state once; null the first time or when it is unreadable.
+  const [saved] = useState<TreeViewPersistableState | null>(() => {
+    try {
+      const raw = localStorage.getItem("files-tree");
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
+  // The search field is yours: start it from the saved value too.
+  const [query, setQuery] = useState(saved?.searchQuery ?? "");
+
+  // Mount the tree only once `data` is complete (see below).
+  if (isLoading) return <p>Loading...</p>;
+  return (
+    <>
+      <input value={query} onChange={(event) => setQuery(event.target.value)} />
+      <TreeView
+        data={data}
+        searchQuery={query}
+        initialState={saved ?? undefined}
+        onStateChange={(state) => localStorage.setItem("files-tree", JSON.stringify(state))}
+        aria-label="Files"
+      />
+    </>
+  );
+}
+```
+
+- `onStateChange` runs after the render where the expanded ids (the persistent set also reported
+  by `onExpandedChange`, drag auto-expansion included), the selection or the `searchQuery` prop
+  changed. It is not called at mount, there is no debounce (do it in your handler), and every call
+  gets fresh objects. Opening branches while a search is active is temporary and not reported.
+- With a controlled `selectedId` the prop is what is reported: it fires when the prop changes, the
+  click itself is still `onSelect`.
+- **Pass `initialState` only when `data` is already complete.** Ids missing from `data` at mount
+  are dropped and the cleaned state is reported. If the tree mounts with `data={[]}` while the
+  real data is loading, `onStateChange` fires with the empty state, and a handler that saves it
+  overwrites what you had stored. Render the `TreeView` only once the data has arrived (as above),
+  or give it a `key` that changes when the data does, so it remounts with the saved state.
+- `initialState` is read on mount only and replaces `defaultExpandedIds` and `defaultSelectedId`
+  entirely (a development warning names them if you pass both). A controlled `selectedId` wins.
+- The library cannot set a controlled prop, so `initialState.searchQuery` is **not** applied:
+  initialize your own search field with it, as above (a development warning flags a mismatch).
+- Malformed input never throws: invalid parts count as empty, with one development warning.
+  Ids missing from `data` are dropped, and `onStateChange` then fires once with the cleaned state.
+  The same happens when `data` is replaced and ids vanish (even though `onExpandedChange` stays
+  silent): the reported state only ever contains ids that exist in the current `data`.
+
 ### Empty tree, disabled node, depth limit
 
 ```tsx
@@ -246,6 +307,8 @@ function StandaloneContextMenu() {
 | `selectedId` | `string \| number \| null` | none | Controlled selection (`null` = nothing). |
 | `defaultSelectedId` | `string \| number` | none | Initial selection, uncontrolled (read once). |
 | `onSelect` | `(id, node) => void` | none | User selected an enabled node (click, Enter, Space). |
+| `onStateChange` | `(state: TreeViewPersistableState) => void` | none | Expanded ids, selection or search query changed; see "Persisting the tree state". |
+| `initialState` | `TreeViewPersistableState` | none | State to restore on mount (read once); replaces `defaultExpandedIds`/`defaultSelectedId`. |
 | `searchQuery` | `string` | none | Case-insensitive substring filter on `label`; shows matches and their ancestors, wraps matches in `<mark>`. |
 | `noResults` | `ReactNode` | none | Rendered next to the tree when a search matches nothing. |
 | `emptyState` | `ReactNode` | none | Rendered next to the tree when `data` is empty. |
