@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 const url = "/iframe.html?id=draggabletreeview-draggableautoscroll--default&viewMode=story";
 
 test.describe("auto-scroll QA", () => {
-  test("two consecutive drags both auto-scroll, with a horizontal level change and no console errors", async ({
+  test("two consecutive drags both auto-scroll, with a drop on a different row and no console errors", async ({
     page,
   }) => {
     const errors: string[] = [];

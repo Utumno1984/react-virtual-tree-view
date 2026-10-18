@@ -31,7 +31,9 @@ function ThemedTree({ searchQuery }: { searchQuery?: string }) {
         maxDepth={2}
         aria-label="Themed tree"
         className="rvtv-tree"
-        renderDropIndicator={() => <div className="rvtv-drop-line" />}
+        renderDropIndicator={(projection) => (
+          <div className={projection.zone === "inside" ? "rvtv-drop-child" : "rvtv-drop-line"} />
+        )}
         contextMenu={{
           items: (node) => [
             { id: "rename", label: "Rename (demo)", onSelect: () => undefined },
@@ -53,7 +55,7 @@ type Story = StoryObj<typeof meta>;
 
 /**
  * `docs/example-theme.css` applied to a `DraggableTreeView` with plain CSS (no Tailwind):
- * selection, focus, disabled, drag, drop indicator (orange when the depth is clamped by `maxDepth`),
+ * selection, focus, disabled, drag, drop indicator (a line for the sibling zones, a highlighted row for "becomes a child"),
  * search highlight and context menu. See `docs/styling-hooks.md`.
  */
 export const Themed: Story = {};

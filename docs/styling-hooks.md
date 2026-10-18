@@ -45,7 +45,7 @@ descendant selectors for hierarchy.
 | row | `tabindex` | `0` on the single tabbable row, `-1` on the others (roving) | `TreeView.tsx:531` |
 | toggle | `aria-hidden="true"` | | `TreeView.tsx:429` |
 | drag overlay | `aria-hidden="true"` | | `TreeView.tsx:485` |
-| drop indicator | `aria-hidden="true"` | | `DropIndicator.tsx:24` |
+| drop indicator | `aria-hidden="true"` | | `DropIndicator.tsx:28` |
 | context menu | `role="menu"`, `aria-label` | label defaults to the node label | `TreeContextMenu.tsx:163-164` |
 | menu item | `role="menuitem"` | | `TreeContextMenu.tsx:183` |
 | menu item | `aria-disabled` | `"true"` when disabled, otherwise absent | `TreeContextMenu.tsx:185` |
@@ -60,9 +60,11 @@ descendant selectors for hierarchy.
 | row | `data-dragging` | `""` or absent | this row is the one being dragged | DraggableTreeView | `DraggableTreeView.tsx:29` |
 | row | `data-drag-disabled` | `""` or absent | drag is off for this row (disabled node or active search) | DraggableTreeView | `DraggableTreeView.tsx:30` |
 | toggle | `data-toggle` | `""` | the expand/collapse glyph (present on leaves too, empty) | TreeView, DraggableTreeView | `TreeView.tsx:428` |
-| drop indicator | `data-drop-indicator` | `""` | the indicator wrapper | DraggableTreeView | `DropIndicator.tsx:25` |
-| drop indicator | `data-projected-depth` | number | depth where the node would land (roots are 0) | DraggableTreeView | `DropIndicator.tsx:26` |
-| drop indicator | `data-depth-clamped` | `"true"` / `"false"` | `maxDepth` cut the projection | DraggableTreeView | `DropIndicator.tsx:27` |
+| drop indicator | `data-drop-indicator` | `""` | the indicator wrapper | DraggableTreeView | `DropIndicator.tsx:29` |
+| drop indicator | `data-drop-mode` | `"line"` / `"child"` | a line between rows (sibling zones) or the whole hovered row highlighted ("becomes a child") | DraggableTreeView | `DropIndicator.tsx:30` |
+| drop indicator | `data-drop-zone` | `"before"` / `"inside"` / `"after"` | band of the hovered row the pointer is on | DraggableTreeView | `DropIndicator.tsx:31` |
+| drop indicator | `data-projected-depth` | number | depth where the node would land (roots are 0) | DraggableTreeView | `DropIndicator.tsx:32` |
+| drop indicator | `data-depth-clamped` | `"true"` / `"false"` | always `"false"` (kept for compatibility: `maxDepth` now refuses a zone instead of cutting the depth) | DraggableTreeView | `DropIndicator.tsx:33` |
 | drag overlay | `data-drag-overlay` | `""` | the floating copy of the dragged row | DraggableTreeView | `TreeView.tsx:486` |
 | context menu | `data-tree-context-menu` | `""` | the menu container | TreeView (`contextMenu`), TreeContextMenu | `TreeContextMenu.tsx:166` |
 | menu item | `data-menu-item-id` | `item.id` | id of the `MenuItem` | TreeContextMenu | `TreeContextMenu.tsx:186` |
@@ -97,7 +99,8 @@ The library never adds a class of its own. You choose them:
 | row being dragged | `[data-dragging]` |
 | drag disabled | `[data-drag-disabled]` |
 | drag overlay | `[data-drag-overlay]` |
-| drop indicator, clamped | `[data-drop-indicator][data-depth-clamped="true"]` |
+| drop indicator, "becomes a child" | `[data-drop-indicator][data-drop-mode="child"]` |
+| drop indicator, sibling line | `[data-drop-indicator][data-drop-mode="line"]` |
 | search match | `mark` inside the row |
 | search match of a given term | `mark[data-term-index="n"]` (`n` = index in `searchTerms`; `0` with `searchQuery`) |
 | menu item disabled | `[role="menuitem"][aria-disabled="true"]` |

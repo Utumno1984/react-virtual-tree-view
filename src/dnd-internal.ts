@@ -15,14 +15,14 @@ export interface ContainerGeometry {
 }
 
 /**
- * Resolves the drop target for a pointer position in viewport coordinates, `dx` px to the
- * right of where the drag started (internal). `null` when the pointer is outside the tree.
+ * Resolves the drop target for a pointer position in viewport coordinates (internal): the row
+ * under the pointer and the vertical band of that row decide the target. `null` when the
+ * pointer is outside the tree or the zone is not a valid drop.
  */
 export type DropResolver = (
   x: number,
   y: number,
   activeId: TreeId,
-  dx: number,
   /** Height of the dragged subtree, computed once when the drag starts. */
   subtreeHeight?: number,
   /** Cached container geometry (auto-scroll); when omitted the resolver measures the DOM. */

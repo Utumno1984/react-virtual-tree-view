@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { center, collectConsole, dragToPoint, node, order, storyUrl } from "./helpers";
+import { center, collectConsole, dragToPoint, dragToZone, node, order, storyUrl } from "./helpers";
 
 /**
  * Smoke battery over the statically built Storybook: every planned story opens without
@@ -96,12 +96,8 @@ test.describe("scenarios", () => {
     await page.mouse.up();
     await expect(log(page)).toContainText("none yet");
 
-    // but it receives a nested node: drag "docs" one indentation (+ one) to the right of D
-    const start = await center(node(page, "docs"));
-    await page.mouse.move(start.x, start.y);
-    await page.mouse.down();
-    await page.mouse.move(start.x, start.y + 8, { steps: 3 });
-    await page.mouse.move(start.x + 48, start.y, { steps: 10 });
+    // but it receives a nested node: drag "docs" onto the middle of D's row
+    await dragToZone(page, node(page, "docs"), disabled, "inside");
     await page.mouse.up();
     await expect(log(page)).toContainText('"nodeId":"docs","fromParentId":null,"toParentId":"D"');
     await expect(node(page, "docs")).toHaveAttribute("aria-level", "3");
@@ -138,18 +134,20 @@ test.describe("scenarios", () => {
     await expect(node(page, "reports")).toHaveAttribute("aria-expanded", "false");
   });
 
-  test("6. drag beyond maxDepth: data-depth-clamped while dragging, no aria-level over maxDepth + 1 after the drop", async ({
+  test("6. drag beyond maxDepth: the refused zone has no indicator, no aria-level over maxDepth + 1 after the drop", async ({
     page,
   }) => {
     await page.goto(storyUrl("draggabletreeview-draggablemaxdepth--default"));
     await expect(page.getByTestId("max-depth")).toContainText("maxDepth = 2");
-    const start = await center(node(page, "A"));
-    const target = await center(node(page, "C1"));
-    await page.mouse.move(start.x, start.y);
-    await page.mouse.down();
-    await page.mouse.move(start.x, start.y + 8, { steps: 3 });
-    await page.mouse.move(start.x + 72, target.y, { steps: 12 });
-    await expect(indicator(page)).toHaveAttribute("data-depth-clamped", "true");
+    // the middle of C1 (depth 2) would make A depth 3: refused, no indicator, no drop
+    await dragToZone(page, node(page, "A"), node(page, "C1"), "inside");
+    await expect(indicator(page)).toHaveCount(0);
+    await page.mouse.up();
+    await expect(log(page)).toContainText("none yet");
+    // the lower quarter of C1 (next sibling, depth 2) fits the limit
+    await dragToZone(page, node(page, "A"), node(page, "C1"), "after");
+    await expect(indicator(page)).toHaveAttribute("data-depth-clamped", "false");
+    await expect(indicator(page)).toHaveAttribute("data-projected-depth", "2");
     await page.mouse.up();
     await expect(indicator(page)).toHaveCount(0);
     const levels = await page
@@ -213,7 +211,7 @@ test.describe("scenarios", () => {
     await expect(log(page)).toContainText("none yet");
 
     // reorder: A goes after D
-    await dragToPoint(page, node(page, "A"), await center(node(page, "D")));
+    await dragToZone(page, node(page, "A"), node(page, "D"), "after");
     await page.mouse.up();
     await expect(log(page)).toContainText('"nodeId":"A","fromParentId":"p","toParentId":"p","index":3');
     await expect.poll(() => order(page)).toEqual(["p", "B", "C", "C1", "D", "A", "docs", "cv", "notes", "misc"]);

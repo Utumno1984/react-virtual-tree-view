@@ -63,23 +63,28 @@ describe("DraggableTreeView renders while dragging", () => {
       fireEvent.mouseDown(rowEl("B"), { clientX: 100, clientY: y, button: 0, buttons: 1 });
     });
     move(100, y + 10);
+    // the pointer is still over the dragged row itself: not a valid target, no indicator
     move(100, y);
+    expect(indicator()).toBeNull();
+    // middle of A (row 1): "becomes a child of A", one level deeper than A
+    const aMiddle = 1 * ROW + ROW / 2;
+    move(100, aMiddle);
     expect(indicator()).not.toBeNull();
-    expect(indicator()!.getAttribute("data-projected-depth")).toBe("1");
+    expect(indicator()!.getAttribute("data-projected-depth")).toBe("2");
 
     // dragging starts: let the (few) renders caused by the start settle, then count
     renders.mockClear();
 
-    // a few pixels, same row and same indentation step: nothing changes at all
-    move(103, y + 2);
-    move(98, y - 3);
+    // a few pixels, same row and same zone (and any horizontal move): nothing changes at all
+    move(103, aMiddle + 2);
+    move(98 + IND, aMiddle - 3);
     expect(renders).not.toHaveBeenCalled();
 
-    // the projection changes (one level deeper, then another row): only the indicator updates
-    move(100 + IND, y);
-    expect(indicator()!.getAttribute("data-projected-depth")).toBe("2");
-    move(100 + IND, y - ROW);
-    move(100, y + ROW);
+    // the zone changes (upper band of A: a sibling line), then another row: only the indicator updates
+    move(100, 1 * ROW + 2);
+    expect(indicator()!.getAttribute("data-projected-depth")).toBe("1");
+    expect(indicator()!.getAttribute("data-drop-mode")).toBe("line");
+    move(100, 4 * ROW + ROW / 2);
     expect(indicator()).not.toBeNull();
     expect(renders).not.toHaveBeenCalled();
   });

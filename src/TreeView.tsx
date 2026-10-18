@@ -33,10 +33,12 @@ import {
   getCheckStates,
   getDragPaddingRows,
   getDropTarget,
+  getEndDropTarget,
+  getDropZone,
   toggleChecked,
   withoutDerived,
 } from "./tree-utils";
-import type { DropTarget, FlattenedNode, TreeId } from "./tree-utils";
+import type { DropTarget, DropZone, FlattenedNode, TreeId } from "./tree-utils";
 import type { TreeDndAdapter } from "./dnd-internal";
 import { createProjectionCache } from "./projection-cache";
 import { DropIndicator } from "./DropIndicator";
@@ -446,8 +448,44 @@ function TreeViewInner<T = unknown>(
     );
   }, [data, activeDragId, layoutExpanded, effectiveExpanded, search, rows.length, dragScroll, height, rowHeight]);
 
-  const { start, end, viewport, totalHeight, onScroll, scrollToIndex } = useVirtualRows({
-    count: rows.length + hiddenRows,
+  // While dragging a list that scrolls, one blank row at the end keeps the "end of the whole
+  // tree" zone (the pointer below the last row) at least a row tall, whatever padding/border the
+  // container has. Not added to a container that grows with its content (it would shift the
+  // layout under the pointer) nor to a short list, which already has blank space below.
+  const dragEndRow =
+    activeDragId !== null &&
+    (rows.length + hiddenRows) * rowHeight > (height ?? dragScroll.view) - (height === undefined ? 0 : rowHeight)
+      ? 1
+      : 0;
+  // When the drag ends the row must not vanish while the scroll position still needs it:
+  // the browser would clamp `scrollTop` and the content would jump under the pointer. It is
+  // kept while `scrollTop` is beyond what the rows alone can reach (the row is what holds that
+  // position up) and released once it is back within their reach. The DOM is read
+  // before the commit, so `scrollTop` is still the one of the drag.
+  const [keepEndRow, setKeepEndRow] = useState(false);
+  const hadEndRow = useRef(0);
+  if (hadEndRow.current === 1 && dragEndRow === 0 && !keepEndRow) {
+    const el = containerRef.current;
+    if (el && el.scrollTop > Math.max(0, rows.length * rowHeight - el.clientHeight)) setKeepEndRow(true);
+  }
+  const endRow = dragEndRow === 1 || keepEndRow ? 1 : 0;
+  useEffect(() => {
+    hadEndRow.current = dragEndRow;
+  }, [dragEndRow]);
+  const releaseEndRow = () => {
+    const el = containerRef.current;
+    // one row of hysteresis below the scroll the rows alone can reach
+    if (el && el.scrollTop <= Math.max(0, rows.length * rowHeight - el.clientHeight - rowHeight)) {
+      setKeepEndRow(false);
+    }
+  };
+  useEffect(() => {
+    if (!keepEndRow) return;
+    if (activeDragId !== null) setKeepEndRow(false);
+    else releaseEndRow();
+  }, [keepEndRow, activeDragId, rows.length, rowHeight]);
+  const { start, end, viewport, totalHeight, onScroll: onVirtualScroll, scrollToIndex } = useVirtualRows({
+    count: rows.length + hiddenRows + endRow,
     rowHeight,
     overscan,
     height,
@@ -686,16 +724,18 @@ function TreeViewInner<T = unknown>(
   useEffect(() => {
     if (!resolverRef) return;
     // Rebuilt with `rows`, so the cache never outlives the layout it was computed for.
-    const cache = createProjectionCache<DropTarget | null, TreeId>();
+    const cache = createProjectionCache<DropTarget | null, TreeId, DropZone>();
     let flat: FlattenedNode<T>[] | null = null;
     // Offset of the content's top edge from the container's border-box top, at scrollTop 0
     // (padding/border included); measured again only when the cached container rect changes.
     let measuredRect: object | null = null;
     let contentOffset = 0;
-    resolverRef.current = (x, y, activeId, dx, subtreeHeight, geometry) => {
+    resolverRef.current = (x, y, activeId, subtreeHeight, geometry) => {
       const el = containerRef.current;
       const content = contentRef.current;
       if (search || !el || !content || rows.length === 0) return null;
+      // A zero / non-finite row height would turn the row position into NaN (zone "inside").
+      if (!(rowHeight > 0) || !Number.isFinite(rowHeight)) return null;
       const rect = geometry ? geometry.rect : el.getBoundingClientRect();
       if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) return null;
       // Rows are positioned inside the content element, which already moves with the
@@ -710,17 +750,27 @@ function TreeViewInner<T = unknown>(
       } else {
         top = content.getBoundingClientRect().top;
       }
-      const overIndex = Math.min(rows.length - 1, Math.max(0, Math.floor((y - top) / rowHeight)));
-      const steps = Math.round(dx / indentation);
-      return cache.get(activeId, overIndex, steps, () => {
+      // Row under the pointer and where the pointer sits inside it (0 = top edge, 1 = bottom
+      // edge): the vertical band picks "before" / "inside" / "after".
+      const rowPosition = (y - top) / rowHeight;
+      // Below the last row: the end of the whole tree (last root).
+      if (rowPosition >= rows.length) {
+        return cache.get(activeId, rows.length, "after", () => {
+          flat ??= rows.map((row) => row.item);
+          return getEndDropTarget(flat, activeId);
+        });
+      }
+      const overIndex = Math.min(rows.length - 1, Math.max(0, Math.floor(rowPosition)));
+      const zone = getDropZone(rowPosition - overIndex);
+      return cache.get(activeId, overIndex, zone, () => {
         flat ??= rows.map((row) => row.item);
-        return getDropTarget(flat, activeId, overIndex, dx, indentation, maxDepth, subtreeHeight);
+        return getDropTarget(flat, activeId, overIndex, zone, maxDepth, subtreeHeight);
       });
     };
     return () => {
       resolverRef.current = null;
     };
-  }, [resolverRef, rows, rowHeight, search, indentation, maxDepth]);
+  }, [resolverRef, rows, rowHeight, search, maxDepth]);
 
   const scrollElRef = dnd?.scrollElRef;
   useEffect(() => {
@@ -871,7 +921,10 @@ function TreeViewInner<T = unknown>(
         aria-label={ariaLabel}
         aria-labelledby={ariaLabelledBy}
         aria-multiselectable={checkable ? true : undefined}
-        onScroll={onScroll}
+        onScroll={(event) => {
+          onVirtualScroll(event);
+          if (keepEndRow) releaseEndRow();
+        }}
         onFocus={keyboard.onTreeFocus}
         onBlur={keyboard.onTreeBlur}
         // `height` is set only when the prop is given, so the consumer's CSS can size the

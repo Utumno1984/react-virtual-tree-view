@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
+import { zonePoint } from "./helpers";
 
 const story = (id: string) => `/iframe.html?id=draggabletreeview-draggable--${id}&viewMode=story`;
 const node = (page: Page, id: string) => page.locator(`[data-node-id="${id}"]`);
@@ -25,9 +26,10 @@ test.describe("DraggableTreeView reorder QA", () => {
     await expect(page.getByRole("treeitem").first()).toBeVisible();
     const ids = await order(page);
     expect(ids.length).toBeGreaterThan(2);
-    await dragTo(page, ids[0]!, await center(page, ids[2]!));
+    await dragTo(page, ids[0]!, await zonePoint(node(page, ids[2]!), "after"));
     await page.mouse.up();
     await expect(log(page)).toContainText(`"nodeId":"${ids[0]}"`);
+    await expect(log(page)).toContainText('"toParentId":null');
     await expect.poll(async () => (await order(page)).indexOf(ids[0]!)).toBeGreaterThan(1);
   });
 
@@ -67,7 +69,9 @@ test.describe("DraggableTreeView reorder QA", () => {
     await expect(page.getByRole("treeitem").first()).toBeVisible();
     const ids = await order(page);
     const first = ids[0]!;
-    const third = await center(page, ids[2]!);
+    // lower quarter of the third row: after scrolling by whole rows the pointer stays on the
+    // lower quarter of the row it ends up on, which then is "the next sibling of that row"
+    const third = await zonePoint(node(page, ids[2]!), "after");
     await dragTo(page, first, third);
     await page.evaluate(() => {
       const tree = document.querySelector('[role="tree"]') as HTMLElement;

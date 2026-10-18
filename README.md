@@ -279,30 +279,53 @@ function DepthLimitedTree() {
 }
 ```
 
-#### Known limit with non-conforming data
+#### Where a dragged node lands: drop zones
 
-If `data` already has nodes deeper than `maxDepth`, a drop can end up beyond the limit. This
-happens when the final slot (after it has moved past the rows that are too deep for the dragged
-subtree but still within `maxDepth`) is right above a row deeper than `maxDepth`, which forces the
-dropped node to at least that depth. It can also happen when dropping above a conforming row (e.g.
-`a > b > c > x > y` plus `l > m` with `maxDepth={2}`: dropping `l` above `c` lands between `c` and
-`x`, at depth 3), or when the dragged subtree itself is already taller than `maxDepth` (it
-overshoots wherever it goes). `projection.clamped` is `true` in these cases, but also for ordinary
-cuts that honour the limit, so it is not enough on its own. The overshoot is
-`depth + getSubtreeHeight(node) > maxDepth`, with your `maxDepth` and not `projection.maxDepth`
-(which is raised to `minDepth`):
+While dragging, the row under the pointer and the vertical position of the pointer inside it decide
+the drop. The horizontal position is irrelevant (this also makes it work the same on touch):
 
-- In `renderDropIndicator` you only get the projection, not the dragged node. The indicator is
-  rendered inside the `DndContext`, so return a component and read the dragged id there with
-  `useDndContext().active?.id` (from `@dnd-kit/core`), then find the node with
-  `findNodeById(data, id)` and check `projection.depth + getSubtreeHeight(node) > maxDepth`. If you
-  call `getProjection` / `getDropTarget` yourself you already know the active id.
-- In `onTreeChange` (the event has no `clamped`): take `const node = findNodeById(tree, event.nodeId)`
-  and compute `getAncestorIds(tree, event.nodeId).length + getSubtreeHeight(node) > maxDepth`.
-  Ignoring the new tree whenever this is true also blocks moves that do not make things worse (for
-  example reordering `d` and `e` under `c` at depth 3). Compare with the same value before the move,
-  `getAncestorIds(data, event.nodeId).length + getSubtreeHeight(node)`, and accept the move unless
-  it is higher.
+| Zone of the hovered row | Result | Indicator |
+|---|---|---|
+| upper ~25% | previous sibling of the row | a line above the row |
+| middle ~50% | **first child** of the row (a collapsed parent is expanded on drop) | the whole row highlighted |
+| lower ~25% | next sibling of the row if it is collapsed or a leaf; **first child** of the row if it is expanded with visible children | a line right below the row (indented one level more when it is a first child) |
+
+The line is therefore always next to the pointer, even under an expanded row with hundreds of
+children. To drop a node after an expanded row's subtree, use the upper band of the next row. With
+`maxDepth`, the first-child reading of an expanded row's lower band is refused (not demoted to a
+sibling) when it would exceed the limit.
+
+A pointer **below the last row** of the list (the blank space under a short list, or the very bottom
+edge of the container when the list is scrolled to its end) means "the end of the whole tree": the
+last position among the roots.
+
+While a drag is active, a list tall enough to scroll, or close enough that the drag itself (and its
+reserved row) might make it start scrolling, keeps one blank row at its end, so this zone is always
+at least one row tall, whatever padding or border the container has. The row normally clears right
+after the drop, once the scroll position no longer needs it (if the list was scrolled into the space
+the row provides, it stays until the list is scrolled back up a little, so the content does not
+jump); a shorter list, or a container that grows with its content, is left untouched (to avoid
+shifting the layout under the pointer).
+
+**Known limit:** for every ancestor of the last visible row, except its direct parent, "become the
+last child of that ancestor" is not reachable without first collapsing something in its subtree (the
+lower band of an expanded row is its first-child zone). There is no keyboard alternative for
+dragging yet.
+
+Not valid targets (no indicator, nothing happens on release): the dragged node itself, and with
+`maxDepth` a zone that would put the node or any descendant deeper than the limit (the "child" zone
+of a row at the limit is refused while its sibling zones stay valid). A subtree already taller than
+`maxDepth` can only be dropped at the root level. Disabled nodes cannot be dragged but accept
+children and siblings like any other row.
+
+The indicator wrapper carries `data-drop-zone` (`before` / `inside` / `after`) and
+`data-drop-mode` (`line` / `child`), and `renderDropIndicator` receives `projection.zone`.
+A custom `renderDropIndicator` that ignores `projection.zone` draws the same line for `"inside"` as
+for `"before"` (at the top of the hovered row, at `left: 0`), which is easy to mistake for "previous
+sibling": branch on `projection.zone` (for `"inside"`, highlight the whole row instead).
+`projection.clamped` is always `false` and `minDepth` / `maxDepth` always equal `depth`: they are kept
+only for compatibility. If `data` already has nodes deeper than `maxDepth` the drop is not refused
+because of that data, only because of where the node would land.
 
 ### Context menu
 
@@ -467,11 +490,11 @@ Additional `DraggableTreeView` props:
 | Prop | Type | Default | Description |
 |---|---|---|---|
 | `onTreeChange` | `(tree, event) => void` | none | A drop changed the tree. `event`: `nodeId`, `fromParentId`, `toParentId`, `index`. |
-| `maxDepth` | `number` | no limit | Maximum depth (roots are 0), counting the dragged subtree. The projection is cut, the drop is not refused (see "Known limit with non-conforming data"). |
+| `maxDepth` | `number` | no limit | Maximum depth (roots are 0), counting the dragged subtree. A drop zone that would exceed it is not a valid target (see "Where a dragged node lands: drop zones"). |
 | `autoScroll` | `boolean` | `true` | Scroll the tree when dragging near its top/bottom edge. |
 | `autoScrollThreshold` | `number` | `40` | Height in px of the auto-scroll band at each edge. |
 | `autoScrollMaxSpeed` | `number` | `20` | Maximum auto-scroll speed in px per frame. |
-| `renderDropIndicator` | `(projection) => ReactNode` | thin line | Content of the drop indicator. |
+| `renderDropIndicator` | `(projection) => ReactNode` | line / highlighted row | Content of the drop indicator (`projection.zone` tells a line from a "becomes a child" highlight). |
 
 Keyboard: arrows move between rows and expand/collapse, Enter and Space select (with `checkable`, Space toggles the checkbox and Enter selects), Home/End jump to the
 first/last row. Roles and attributes: `role="tree"`, `role="treeitem"`, `aria-expanded`,
@@ -484,10 +507,12 @@ Pure functions from `tree-utils`, exported for custom drag logic, tests and tree
 | Helper | What it does |
 |---|---|
 | `flattenTree(tree, expandedIds, visible?)` | Pre-order flattening of the visible rows (`FlattenedNode[]`). |
-| `getProjection(flat, activeId, overId, dragOffset, indentation, maxDepth?)` | Depth and parent a dragged node would get (dnd-kit "tree" algorithm). |
-| `getDropTarget(flat, activeId, overIndex, dragOffset, indentation, maxDepth?, subtreeHeight?)` | Full drop target: insertion slot, depth and parent. |
+| `getDropZone(fraction)` | `"before"` / `"inside"` / `"after"` for a pointer at `fraction` (0 to 1) of the hovered row's height: 25% / 50% / 25%. |
+| `getProjection(flat, activeId, overId, zone, maxDepth?)` | Depth and parent a dragged node would get when dropped on `zone` of row `overId`. |
+| `getDropTarget(flat, activeId, overIndex, zone, maxDepth?, subtreeHeight?)` | Full drop target: parent, index, indicator row (`slot`), projection, `isNoop`. |
+| `getEndDropTarget(flat, activeId)` | Drop target for a pointer below the last row: the end of the whole tree (last root). |
 | `getSiblingDropTarget(flat, activeId, overIndex)` | Drop target for a same-parent reorder. |
-| `calculateNewParent(flat, overIndex, depth)` | Parent id of a row placed at `overIndex` at a given depth. |
+| `calculateNewParent(flat, overIndex, zone)` | Parent id of a node dropped on `zone` of row `overIndex`. |
 | `moveNode(tree, nodeId, toParentId, index)` | Immutable move; returns a `MoveResult` `{ tree, fromParentId, toParentId, index }`. For an invalid move `tree` is the same array you passed in. |
 | `getSubtreeHeight(node)` | Height of a subtree (a leaf is 0). |
 | `getAncestorIds(tree, id)` | Ancestor ids from the root down to the parent. |
@@ -498,7 +523,7 @@ Pure functions from `tree-utils`, exported for custom drag logic, tests and tree
 | `toggleChecked(tree, checkedIds, id)` | The checked ids (non-derived, no parents with enabled children) after toggling `id` with cascade (`null` if nothing can change). |
 
 `getProjection`, `getDropTarget` and `getSiblingDropTarget` return `null` when no valid target exists
-(unknown ids, out-of-range index), so check the result before using it. `moveNode` returns an object,
+(unknown ids, out-of-range index, the dragged node itself, a zone refused by `maxDepth`), so check the result before using it. `moveNode` returns an object,
 not the tree:
 
 ```tsx

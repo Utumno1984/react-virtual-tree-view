@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { center, collectConsole, dragToPoint, node, order, storyUrl } from "./helpers";
+import { center, collectConsole, dragToPoint, dragToZone, node, order, storyUrl } from "./helpers";
 
 const url = storyUrl("draggabletreeview-draggable--drag-expanded-node");
 const log = (page: Page) => page.getByTestId("last-event");
@@ -82,9 +82,8 @@ test.describe("dragging an expanded node", () => {
   test("nesting an expanded node keeps it expanded with its whole subtree", async ({ page }) => {
     await page.goto(url);
     await reveal(page, 30, "r30");
-    const start = await center(node(page, "r30"));
-    // released on its own row, one indentation right: last child of the previous row (r29)
-    await dragToPoint(page, node(page, "r30"), { x: start.x + 24, y: start.y });
+    // released on the middle of the previous row (r29): becomes its child
+    await dragToZone(page, node(page, "r30"), node(page, "r29"), "inside");
     await page.mouse.up();
     await expect(log(page)).toContainText('"nodeId":"r30","fromParentId":null,"toParentId":"r29"');
     await expect(node(page, "r30")).toHaveAttribute("aria-level", "2");
@@ -150,7 +149,8 @@ test.describe("dragging an expanded node", () => {
     const lastBox = (await node(page, lastId).boundingBox())!;
     // the last row is inside the window: no blank space after it
     expect(lastBox.y + lastBox.height).toBeLessThanOrEqual(treeBox.y + treeBox.height + 1);
-    expect(lastBox.y + lastBox.height).toBeGreaterThan(treeBox.y + treeBox.height - 40);
+    // (only the one row reserved at the end for the "end of the tree" drop zone)
+    expect(lastBox.y + lastBox.height).toBeGreaterThan(treeBox.y + treeBox.height - 40 - lastBox.height);
     await expect(indicator(page)).toBeVisible();
     const indBox = (await indicator(page).boundingBox())!;
     expect(indBox.y).toBeGreaterThanOrEqual(treeBox.y - 1);
@@ -173,6 +173,29 @@ test.describe("dragging an expanded node", () => {
     await expect(node(page, "r30-c0-g0-x")).toBeAttached();
   });
 
+  test("pointer below the last visible row drops at the end of the roots (last root expanded)", async ({ page }) => {
+    await page.goto(url);
+    await expect(node(page, "r0")).toBeVisible();
+    await tree(page).evaluate((el) => (el.scrollTop = el.scrollHeight));
+    await expect(node(page, "r59-c5")).toBeVisible();
+    // r58 is the root just before the expanded last root r59
+    const start = await center(node(page, "r58"));
+    await dragToPoint(page, node(page, "r58"), { x: start.x, y: start.y + 8 });
+    // the very bottom edge of the container is below the last visible row
+    const bottom = await tree(page).evaluate((el) => el.getBoundingClientRect().bottom);
+    await page.mouse.move(start.x, bottom, { steps: 4 });
+    await expect(indicator(page)).toBeVisible();
+    await page.mouse.up();
+    await expect(log(page)).toContainText('"nodeId":"r58","fromParentId":null,"toParentId":null');
+    const ids = await order(page);
+    expect(ids[ids.length - 1]).toBe("r58");
+    await expect(node(page, "r58")).toHaveAttribute("aria-level", "1");
+    await expect(node(page, "r58")).toHaveAttribute("aria-posinset", "60");
+    // r59 stays expanded with its children, now before r58
+    await expect(node(page, "r59")).toHaveAttribute("aria-expanded", "true");
+    expect(ids.indexOf("r59-c5")).toBe(ids.indexOf("r58") - 1);
+  });
+
   test("a non-expanded node still drags as before", async ({ page }) => {
     await page.goto(url);
     await reveal(page, 30, "r30");
@@ -182,5 +205,116 @@ test.describe("dragging an expanded node", () => {
     await expect(node(page, "r30-c1")).toBeVisible();
     await page.mouse.up();
     await expect(log(page)).toContainText('"nodeId":"r29"');
+  });
+});
+
+test.describe("end of the tree with a bare container (no padding, no border)", () => {
+  const bareUrl = storyUrl("draggabletreeview-draggable--drag-bare-container");
+
+  test("a row-tall zone below the last row exists and drops at the end of the roots", async ({ page }) => {
+    await page.goto(bareUrl);
+    await expect(node(page, "r0")).toBeVisible();
+    const style = await tree(page).evaluate((el) => {
+      const cs = getComputedStyle(el);
+      return [cs.paddingTop, cs.paddingBottom, cs.borderTopWidth, cs.borderBottomWidth];
+    });
+    expect(style).toEqual(["0px", "0px", "0px", "0px"]);
+    await tree(page).evaluate((el) => (el.scrollTop = el.scrollHeight));
+    await expect(node(page, "r59-c5")).toBeVisible();
+    const start = await center(node(page, "r58"));
+    await dragToPoint(page, node(page, "r58"), { x: start.x, y: start.y + 8 });
+    // the reserved row lets the list scroll one row further: the last row ends above the
+    // container's bottom edge and the pointer 6px above that edge is below it
+    const treeBox = (await tree(page).boundingBox())!;
+    const target = treeBox.y + treeBox.height - 6;
+    await page.mouse.move(start.x, target, { steps: 4 });
+    await expect
+      .poll(async () => {
+        const box = await node(page, "r59-c5").boundingBox();
+        return box ? box.y + box.height : Infinity;
+      })
+      .toBeLessThan(target);
+    await expect(indicator(page)).toBeVisible();
+    await page.mouse.up();
+    await expect(log(page)).toContainText('"nodeId":"r58","fromParentId":null,"toParentId":null');
+    const ids = await order(page);
+    expect(ids[ids.length - 1]).toBe("r58");
+    await expect(node(page, "r58")).toHaveAttribute("aria-posinset", "60");
+  });
+
+  test("dropping at the end of a scrolled list does not jump the content", async ({ page }) => {
+    await page.goto(bareUrl);
+    await expect(node(page, "r0")).toBeVisible();
+    await tree(page).evaluate((el) => (el.scrollTop = el.scrollHeight));
+    await expect(node(page, "r59-c5")).toBeVisible();
+    const start = await center(node(page, "r58"));
+    await dragToPoint(page, node(page, "r58"), { x: start.x, y: start.y + 8 });
+    const treeBox = (await tree(page).boundingBox())!;
+    await page.mouse.move(start.x, treeBox.y + treeBox.height - 6, { steps: 4 });
+    await expect(indicator(page)).toBeVisible();
+    // let the scroll position (including any auto-scroll) settle
+    let last = -1;
+    await expect
+      .poll(async () => {
+        const top = await tree(page).evaluate((el) => el.scrollTop);
+        const settled = top === last;
+        last = top;
+        return settled;
+      }, { intervals: [300] })
+      .toBe(true);
+    const scrollBefore = await tree(page).evaluate((el) => el.scrollTop);
+    const lastBefore = (await node(page, "r59-c5").boundingBox())!;
+    await page.mouse.up();
+    await expect(log(page)).toContainText('"nodeId":"r58"');
+    await expect(node(page, "r58")).toHaveAttribute("aria-posinset", "60");
+    await page.waitForTimeout(300);
+    expect(await tree(page).evaluate((el) => el.scrollTop)).toBe(scrollBefore);
+    const lastAfter = (await node(page, "r59-c5").boundingBox())!;
+    // r58 left the place above r59: the rows below move up by exactly one row, nothing more
+    expect(Math.abs(lastAfter.y - (lastBefore.y - lastBefore.height))).toBeLessThan(1);
+  });
+
+  test("the reserved row is released once the list is scrolled back up", async ({ page }) => {
+    await page.goto(bareUrl);
+    await expect(node(page, "r0")).toBeVisible();
+    const plain = await tree(page).evaluate((el) => el.scrollHeight);
+    await tree(page).evaluate((el) => (el.scrollTop = el.scrollHeight));
+    await expect(node(page, "r59-c5")).toBeVisible();
+    const start = await center(node(page, "r58"));
+    await dragToPoint(page, node(page, "r58"), { x: start.x, y: start.y + 8 });
+    const treeBox = (await tree(page).boundingBox())!;
+    await page.mouse.move(start.x, treeBox.y + treeBox.height - 6, { steps: 4 });
+    await expect(indicator(page)).toBeVisible();
+    await page.mouse.up();
+    await expect(log(page)).toContainText('"nodeId":"r58"');
+    // the scroll position still needs the row right after the drop
+    await page.waitForTimeout(300);
+    expect(await tree(page).evaluate((el) => el.scrollHeight)).toBeGreaterThan(plain);
+    // scrolling back up lets it go
+    await tree(page).evaluate((el) => (el.scrollTop = 0));
+    await expect.poll(() => tree(page).evaluate((el) => el.scrollHeight)).toBe(plain);
+  });
+
+  test("a nearly full list dropped without scrolling leaves no blank row behind", async ({ page }) => {
+    await page.goto(bareUrl);
+    await expect(node(page, "r0")).toBeVisible();
+    // make the container a little taller than the rows: it does not scroll without the reserved row
+    const plain = await tree(page).evaluate((el) => {
+      const content = el.scrollHeight;
+      el.style.height = `${content + 10}px`;
+      return content;
+    });
+    expect(await tree(page).evaluate((el) => el.clientHeight)).toBe(plain + 10);
+    expect(await tree(page).evaluate((el) => el.scrollHeight)).toBe(plain + 10);
+    const start = await center(node(page, "r0"));
+    await dragToPoint(page, node(page, "r0"), { x: start.x, y: start.y + 64 });
+    // with the reserved row the list can scroll during the drag
+    await expect.poll(() => tree(page).evaluate((el) => el.scrollHeight)).toBeGreaterThan(plain);
+    expect(await tree(page).evaluate((el) => el.scrollTop)).toBe(0);
+    await page.mouse.up();
+    await expect(log(page)).toContainText('"nodeId":"r0"');
+    // no residual row: the list is back to not scrolling at all
+    await expect.poll(() => tree(page).evaluate((el) => el.scrollHeight)).toBe(plain + 10);
+    expect(await tree(page).evaluate((el) => el.scrollTop)).toBe(0);
   });
 });

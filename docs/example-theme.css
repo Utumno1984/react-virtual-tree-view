@@ -82,15 +82,23 @@
   font: 14px/1.4 system-ui, sans-serif;
 }
 
-/* Drop indicator: the wrapper carries the data-attributes, `renderDropIndicator` supplies the line. */
+/*
+ * Drop indicator: the wrapper carries the data-attributes, `renderDropIndicator` supplies the
+ * content. Sibling zones (`data-drop-mode="line"`) are a line between rows; "becomes a child"
+ * (`data-drop-mode="child"`) covers the whole hovered row, so the content fills it.
+ */
 .rvtv-drop-line {
   height: 2px;
   margin-top: -1px;
   border-radius: 1px;
   background: var(--rvtv-accent, #2563eb);
 }
-[data-drop-indicator][data-depth-clamped="true"] .rvtv-drop-line {
-  background: var(--rvtv-warn, #f59e0b);
+.rvtv-drop-child {
+  height: 100%;
+  box-sizing: border-box;
+  border: 2px solid var(--rvtv-accent, #2563eb);
+  border-radius: 4px;
+  background: rgb(37 99 235 / 0.12);
 }
 
 /* Context menu (rendered next to the tree, `position: fixed` inline). */

@@ -1,41 +1,44 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
+import { dragToZone, moveToZone, startDrag } from "./helpers";
 
 const story = (id: string) => `/iframe.html?id=draggabletreeview-draggable--${id}&viewMode=story`;
 const node = (page: Page, id: string) => page.locator(`[data-node-id="${id}"]`);
 const indicator = (page: Page) => page.locator("[data-drop-indicator]");
 
-async function center(page: Page, id: string) {
-  const box = await node(page, id).boundingBox();
-  if (!box) throw new Error(`row ${id} not visible`);
-  return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-}
-
 test.describe("DraggableTreeView nesting QA", () => {
-  test("dragging the last row far left stays at depth 0 and far right is clamped", async ({ page }) => {
+  test("the horizontal position is ignored: far left and far right of the same zone give the same depth", async ({
+    page,
+  }) => {
     await page.goto(story("draggable"));
-    const s = await center(page, "misc");
-    await page.mouse.move(s.x, s.y);
-    await page.mouse.down();
-    await page.mouse.move(s.x, s.y + 8, { steps: 3 });
     const tree = await page.getByRole("tree").boundingBox();
     if (!tree) throw new Error("tree not visible");
-    await page.mouse.move(tree.x + 2, s.y, { steps: 8 });
+    const row = await node(page, "docs").boundingBox();
+    if (!row) throw new Error("row not visible");
+    const middle = row.x + row.width / 2;
+    await startDrag(page, node(page, "misc"));
+    // upper quarter of "docs": previous root, depth 0, at both horizontal extremes
+    await moveToZone(page, node(page, "docs"), "before", tree.x + 2 - middle);
     await expect(indicator(page)).toHaveAttribute("data-projected-depth", "0");
-    await page.mouse.move(tree.x + tree.width - 2, s.y, { steps: 8 });
-    const d = Number(await indicator(page).getAttribute("data-projected-depth"));
-    expect(d).toBeLessThanOrEqual(3);
+    await moveToZone(page, node(page, "docs"), "before", tree.x + tree.width - 2 - middle);
+    await expect(indicator(page)).toHaveAttribute("data-projected-depth", "0");
+    // lower quarter of the open "docs": its first child, depth 1, at both extremes
+    await moveToZone(page, node(page, "docs"), "after", tree.x + 2 - middle);
+    await expect(indicator(page)).toHaveAttribute("data-projected-depth", "1");
+    await moveToZone(page, node(page, "docs"), "after", tree.x + tree.width - 2 - middle);
+    await expect(indicator(page)).toHaveAttribute("data-projected-depth", "1");
+    // middle of "docs": child, depth 1, at both extremes
+    await moveToZone(page, node(page, "docs"), "inside", tree.x + 2 - middle);
+    await expect(indicator(page)).toHaveAttribute("data-projected-depth", "1");
+    await moveToZone(page, node(page, "docs"), "inside", tree.x + tree.width - 2 - middle);
+    await expect(indicator(page)).toHaveAttribute("data-projected-depth", "1");
     await page.mouse.up();
     await expect(indicator(page)).toHaveCount(0);
   });
 
   test("keyboard navigation and selection still work after a nesting drop", async ({ page }) => {
     await page.goto(story("draggable"));
-    const s = await center(page, "B");
-    await page.mouse.move(s.x, s.y);
-    await page.mouse.down();
-    await page.mouse.move(s.x, s.y + 8, { steps: 3 });
-    await page.mouse.move(s.x + 24, s.y, { steps: 8 });
+    await dragToZone(page, node(page, "B"), node(page, "A"), "inside");
     await page.mouse.up();
     await expect(node(page, "B")).toHaveAttribute("aria-level", "3");
     await node(page, "A").focus();

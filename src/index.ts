@@ -26,6 +26,9 @@ export {
   findNodeById,
   getSiblingDropTarget,
   getDropTarget,
+  getEndDropTarget,
+  getDropZone,
+  DROP_ZONE_EDGE,
   getCheckStates,
   getCheckedIds,
   toggleChecked,
@@ -37,6 +40,7 @@ export type {
   TreeId,
   SiblingDropTarget,
   DropTarget,
+  DropZone,
   CheckState,
   CheckStates,
 } from "./tree-utils";

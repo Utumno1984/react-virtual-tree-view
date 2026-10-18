@@ -75,6 +75,8 @@ interface DemoProps {
   height?: number;
   /** When false the consumer ignores `onTreeChange`, so the tree never changes. */
   applyChanges?: boolean;
+  /** Container without padding or border (the end-of-tree drop zone must not depend on them). */
+  bareContainer?: boolean;
 }
 
 function DraggableDemo({
@@ -83,6 +85,7 @@ function DraggableDemo({
   initialQuery = "",
   height,
   applyChanges = true,
+  bareContainer = false,
 }: DemoProps) {
   const [data, setData] = useState(initialData);
   const [query, setQuery] = useState(initialQuery);
@@ -108,19 +111,27 @@ function DraggableDemo({
           setLastEvent(event);
           if (applyChanges) setData(tree);
         }}
-        className="rounded border border-gray-200 bg-white p-2 text-sm text-gray-800"
+        className={
+          bareContainer
+            ? "bg-white text-sm text-gray-800"
+            : "rounded border border-gray-200 bg-white p-2 text-sm text-gray-800"
+        }
         rowClassName={(state) =>
           `flex items-center gap-1 rounded px-1 py-1 hover:bg-gray-100 ${
             state.isDisabled ? "text-gray-400" : "cursor-grab"
           }`
         }
         renderIcon={Icon}
-        renderDropIndicator={() => (
-          <div className="-mt-px flex items-center">
-            <span className="h-2 w-2 rounded-full bg-blue-500" />
-            <span className="h-0.5 flex-1 bg-blue-500" />
-          </div>
-        )}
+        renderDropIndicator={(projection) =>
+          projection.zone === "inside" ? (
+            <div className="h-full rounded border-2 border-blue-500 bg-blue-500/10" />
+          ) : (
+            <div className="-mt-px flex items-center">
+              <span className="h-2 w-2 rounded-full bg-blue-500" />
+              <span className="h-0.5 flex-1 bg-blue-500" />
+            </div>
+          )
+        }
       />
       <pre data-testid="last-event" className="rounded bg-gray-50 p-2 text-xs text-gray-700">
         {lastEvent ? `onTreeChange ${JSON.stringify(lastEvent)}` : "onTreeChange: none yet"}
@@ -147,15 +158,17 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 /**
- * Drag a row onto another to reorder; move the pointer right to nest under the previous row
- * and left to move up a level. The indicator shows the projected depth live; the last
- * `onTreeChange` event is logged below.
+ * Drag a row over another: the upper quarter of the target row drops it as the previous
+ * sibling (line above), the middle half makes it the first child (the whole row is
+ * highlighted), the lower quarter makes it the next sibling (line below), or the first child when the row is
+ * expanded (line right under the row). The indicator shows
+ * the result live; the last `onTreeChange` event is logged below.
  */
 export const Draggable: Story = {
   args: { initialData: initialTree, defaultExpandedIds: ["p", "C", "docs"] },
 };
 
-/** "Documents" and "Charlie" start collapsed: nesting a node under them expands them on drop. */
+/** "Documents" and "Charlie" start collapsed: dropping on the middle of their row expands them on drop. */
 export const NestUnderCollapsed: Story = {
   args: { initialData: initialTree, defaultExpandedIds: ["p"] },
 };
@@ -168,6 +181,25 @@ export const IgnoredChanges: Story = {
 /** With a search query active nothing can be dragged (rows have `data-drag-disabled`). */
 export const DragDisabledWhileSearching: Story = {
   args: { initialData: initialTree, defaultExpandedIds: ["p", "C", "docs"], initialQuery: "a" },
+};
+
+const longSubtreeTree: TreeNode[] = [
+  { id: "X", label: "X" },
+  {
+    id: "P",
+    label: "Parent with 200 children",
+    children: Array.from({ length: 200 }, (_, i): TreeNode => ({ id: `P-${i}`, label: `Child ${i}` })),
+  },
+  { id: "Q", label: "Q" },
+];
+
+/**
+ * An expanded parent with 200 visible children. The lower quarter of the "P" row is its FIRST
+ * child (the line sits right under the row, next to the pointer, never 200 rows away); the next
+ * sibling of "P" is reached with the upper quarter of "Q".
+ */
+export const LongSubtree: Story = {
+  args: { initialData: longSubtreeTree, defaultExpandedIds: ["P"], height: 300 },
 };
 
 /** 1500 nodes: the drop target is resolved once on release, not on every pointer move. */
@@ -185,5 +217,18 @@ export const DragExpandedNode: Story = {
     initialData: expandedSubtreeTree,
     defaultExpandedIds: ["r30", "r30-c0", "r30-c0-g0", "r59"],
     height: 300,
+  },
+};
+
+/**
+ * Container with no padding and no border: while dragging, the list keeps one blank row at the
+ * end, so the pointer below the last row (end of the whole tree) always has a row-tall zone.
+ */
+export const DragBareContainer: Story = {
+  args: {
+    initialData: expandedSubtreeTree,
+    defaultExpandedIds: ["r59"],
+    height: 300,
+    bareContainer: true,
   },
 };
