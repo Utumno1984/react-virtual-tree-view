@@ -1,6 +1,7 @@
 export type {
   TreeNode,
   TreeViewProps,
+  TreeViewPersistableState,
   RenderNodeState,
   TreeViewHandle,
   TreeChangeEvent,

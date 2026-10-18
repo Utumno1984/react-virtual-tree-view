@@ -1,5 +1,5 @@
 import type * as React from "react";
-import type { Projection } from "./tree-utils";
+import type { Projection, TreeId } from "./tree-utils";
 
 export interface TreeNode<T = unknown> {
   id: string | number;
@@ -25,6 +25,20 @@ export interface RenderNodeState {
   isMatch: boolean;
   /** `[start, end)` offsets of every occurrence of the query in `label`; `[]` unless `isMatch`. */
   matchRanges: Array<[number, number]>;
+}
+
+/**
+ * The persistable state of a tree: open branches, selection and search. Only ids and strings,
+ * so it survives `JSON.stringify` / `JSON.parse` unchanged (numeric ids stay numbers).
+ * Emitted by `onStateChange` and accepted by `initialState`.
+ */
+export interface TreeViewPersistableState {
+  /** Persistently expanded nodes (not the temporary openings made by a search). */
+  expandedIds: TreeId[];
+  /** The selected node, `null` when none. */
+  selectedId: TreeId | null;
+  /** The `searchQuery` prop as given (`""` when undefined). */
+  searchQuery: string;
 }
 
 export interface TreeViewProps<T = unknown> {
@@ -66,6 +80,31 @@ export interface TreeViewProps<T = unknown> {
   defaultSelectedId?: TreeNode["id"];
   /** Called when the user selects an enabled node (click, Enter or Space). */
   onSelect?: (id: TreeNode["id"], node: TreeNode<T>) => void;
+  /**
+   * Called after the render in which the persistable state changed: expanded ids (the same
+   * set `onExpandedChange` reports, drag auto-expansion included; temporary openings during a
+   * search do not count), the effective selection (with a controlled `selectedId`, the prop)
+   * or the `searchQuery` prop. Not called at mount, nor when the new state equals the last
+   * notified one (expanded ids compared as a set). Every call receives fresh objects.
+   *
+   * It also fires when a change of `data` makes the tree drop vanished ids (even though
+   * `onExpandedChange` stays silent), and once after mount if `initialState` held ids missing
+   * from `data`: it reports the cleaned state. There is no debounce: do it in your handler.
+   */
+  onStateChange?: (state: TreeViewPersistableState) => void;
+  /**
+   * State to restore, typically the last one received by `onStateChange` and saved. Read on
+   * mount only (changing it later does nothing).
+   *
+   * - `expandedIds` and `selectedId` replace `defaultExpandedIds` and `defaultSelectedId`
+   *   entirely (both are ignored, with a development warning). A controlled `selectedId`
+   *   prop still wins over `initialState.selectedId`.
+   * - `searchQuery` is NOT applied: `searchQuery` is a prop you control, so initialize your
+   *   own field with the same value (a development warning flags a mismatch).
+   * - Invalid parts are treated as empty, never throwing; ids missing from `data` are dropped.
+   *   Development builds log a single `console.warn` per mount for all of it.
+   */
+  initialState?: TreeViewPersistableState;
   /** Pixels of indentation per depth level. Default 24. */
   indentation?: number;
   /** Custom row content. Defaults to the node `label`. */
