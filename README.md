@@ -121,6 +121,57 @@ function SearchableTree({ query }: { query: string }) {
 
 Uncontrolled selection: `<TreeView data={files} defaultSelectedId="cv" aria-label="Files" />`.
 
+### Several search terms (badges)
+
+`searchTerms` searches for several terms at once, each one highlighted on its own. The library is
+headless: it gives you the data, you render the badges.
+
+```tsx
+function TermBadges({ terms }: { terms: string[] }) {
+  const [result, setResult] = useState<SearchResult>({ terms: [], matchCount: 0 });
+
+  return (
+    <>
+      <ul>
+        {result.terms.map((t) => (
+          <li key={t.termIndex} data-term-index={t.termIndex}>
+            {t.term} ({t.matchCount})
+          </li>
+        ))}
+      </ul>
+      <TreeView
+        data={files}
+        searchTerms={terms}
+        onSearchResult={setResult}
+        noResults={<p>No results</p>}
+        aria-label="Multi-term search"
+      />
+    </>
+  );
+}
+```
+
+```css
+/* Each <mark> carries the index of the term in `searchTerms`. */
+mark[data-term-index="0"] { background: #fde68a; }
+mark[data-term-index="1"] { background: #a5f3fc; }
+```
+
+- Active terms are the non-empty ones after `trim`. With at least one, `searchQuery` is ignored (a
+  development warning flags it); otherwise `searchQuery` applies as before. To combine badges and the
+  text being typed pass `[...terms, input]`.
+- A node matches when its label contains any term (case-insensitive substring, no regex). Duplicates
+  (after `trim` + lowercase) count as the one with the lowest index; empty terms keep their index.
+- Overlaps: the leftmost start wins, then the longest term, then the lowest index (`["app", "apple"]` on
+  "apple pie" highlights `apple` with `termIndex: 1`). `RenderNodeState.termMatches` lists the winning
+  `{ range, termIndex }`; `matchRanges` stays equal to their ranges.
+- `onSearchResult` runs after commit when the terms, their `active` flags or the counts change (never
+  twice for the same result; `terms: []` when the search is cleared). A term's `matchCount` is the number
+  of nodes whose label contains it, even if an overlap hides its highlight.
+- Cost: one pass over the tree whatever the number of terms; the terms are normalized and the
+  Aho-Corasick automaton is built once per set of terms, so each label costs O(length + occurrences), not
+  O(terms x length). `searchTerms` is not part of `TreeViewPersistableState`.
+
 ### Persisting the tree state
 
 `onStateChange` hands you one JSON-serializable object, `TreeViewPersistableState`
@@ -310,6 +361,8 @@ function StandaloneContextMenu() {
 | `onStateChange` | `(state: TreeViewPersistableState) => void` | none | Expanded ids, selection or search query changed; see "Persisting the tree state". |
 | `initialState` | `TreeViewPersistableState` | none | State to restore on mount (read once); replaces `defaultExpandedIds`/`defaultSelectedId`. |
 | `searchQuery` | `string` | none | Case-insensitive substring filter on `label`; shows matches and their ancestors, wraps matches in `<mark>`. |
+| `searchTerms` | `ReadonlyArray<string>` | none | Several terms, each highlighted separately (`<mark data-term-index>`); wins over `searchQuery` when it has an active term. See "Several search terms". |
+| `onSearchResult` | `(result: SearchResult) => void` | none | Per-term and total match counts, after commit, when the result changes (data for badges). |
 | `noResults` | `ReactNode` | none | Rendered next to the tree when a search matches nothing. |
 | `emptyState` | `ReactNode` | none | Rendered next to the tree when `data` is empty. |
 | `renderNode` | `(node, state) => ReactNode` | label | Custom row content. |
