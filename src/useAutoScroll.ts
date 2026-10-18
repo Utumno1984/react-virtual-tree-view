@@ -5,11 +5,15 @@ import type { ContainerGeometry } from "./dnd-internal";
 export const DEFAULT_AUTO_SCROLL_THRESHOLD = 40;
 export const DEFAULT_AUTO_SCROLL_MAX_SPEED = 20;
 
+/** Ease-in curve on a 0..1 fraction: gentle start, same endpoints as the identity. */
+const easeIn = (t: number): number => t * t;
+
 /**
  * Signed scroll speed (px per frame) for a pointer at (`pointerX`, `pointerY`): negative
  * scrolls up, positive scrolls down, 0 outside both bands. Each band is `threshold` px tall
- * and sits just inside the matching edge of `rect`; the speed grows linearly from 0 at the
- * inner border of the band to `maxSpeed` at the edge, and stays at `maxSpeed` up to
+ * and sits just inside the matching edge of `rect`; the speed follows an ease-in (quadratic)
+ * curve from 0 at the inner border of the band to `maxSpeed` at the edge (half way into the
+ * band it is a quarter of `maxSpeed`), and stays at `maxSpeed` up to
  * `threshold` px past the edge (a drag that overshoots slightly keeps scrolling). Further
  * out, or horizontally outside `rect`, the speed is 0. When the container is so short that
  * the bands overlap, the nearest edge wins. Non-finite inputs give 0.
@@ -36,7 +40,7 @@ export function getScrollSpeed(
   const intoTop = Math.min(1, Math.max(0, (rect.top + threshold - pointerY) / threshold));
   const intoBottom = Math.min(1, Math.max(0, (pointerY - (rect.bottom - threshold)) / threshold));
   if (intoTop === 0 && intoBottom === 0) return 0;
-  return intoBottom > intoTop ? maxSpeed * intoBottom : -maxSpeed * intoTop;
+  return intoBottom > intoTop ? maxSpeed * easeIn(intoBottom) : -maxSpeed * easeIn(intoTop);
 }
 
 export interface UseAutoScrollOptions {

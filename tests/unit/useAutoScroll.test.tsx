@@ -31,10 +31,21 @@ describe("getScrollSpeed", () => {
   });
 
   it("is proportional and capped at maxSpeed within one threshold past the edge", () => {
-    expect(getScrollSpeed(X, 480, rect, 40, 20)).toBeCloseTo(10);
+    // Ease-in (t^2): half way into the band is a quarter of maxSpeed (was half with the
+    // old linear curve); the ends (0 at the inner border, maxSpeed at the edge) are unchanged.
+    expect(getScrollSpeed(X, 480, rect, 40, 20)).toBeCloseTo(5);
+    expect(getScrollSpeed(X, 120, rect, 40, 20)).toBeCloseTo(-5);
+    expect(getScrollSpeed(X, 480, rect, 40, 100)).toBeCloseTo(25); // scales with a custom maxSpeed
+    expect(getScrollSpeed(X, 490, rect, 80, 20)).toBeCloseTo(20 * (70 / 80) ** 2); // custom threshold
     expect(getScrollSpeed(X, 520, rect, 40, 20)).toBe(20);
     expect(getScrollSpeed(X, 540, rect, 40, 20)).toBe(20); // exactly one threshold past
     expect(getScrollSpeed(X, 60, rect, 40, 20)).toBe(-20);
+  });
+
+  it("starts gently: just inside the band the speed is a small fraction of maxSpeed", () => {
+    expect(getScrollSpeed(X, 470, rect, 40, 20)).toBeCloseTo(20 * 0.25 ** 2); // 25% in: 1.25
+    expect(getScrollSpeed(X, 470, rect, 40, 20)).toBeLessThan(20 * 0.25); // linear gave 5
+    expect(getScrollSpeed(X, 461, rect, 40, 20)).toBeLessThan(0.02);
   });
 
   // Replaces `getScrollSpeed(900, ...) === 20` / `(-50, ...) === -20`: that encoded the bug
@@ -159,7 +170,8 @@ describe("useAutoScroll", () => {
     expect(onScrolled).toHaveBeenCalledTimes(3);
     pointer.current.y = 490; // closer to the middle of the band: slower
     runFrame();
-    expect(el.scrollTop).toBe(75);
+    // 30/40 into the band: 20 * 0.75^2 = 11.25 px (linear curve gave 15 -> 75).
+    expect(el.scrollTop).toBe(71.25);
   });
 
   it("scrolls up to 0 and then stops without calling onScrolled", () => {
