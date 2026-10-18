@@ -124,7 +124,42 @@ test.describe("dragging an expanded node", () => {
     await expect(node(page, "r59-c5")).toBeAttached();
   });
 
-  test("an expanded node with a single child drags and drops", async ({ page }) => {
+  test("auto-scrolling to the bottom ends on the last row, not on a blank window", async ({ page }) => {
+    await page.goto(url);
+    await reveal(page, 30, "r30");
+    const treeBox = (await tree(page).boundingBox())!;
+    const start = await center(node(page, "r30"));
+    await dragToPoint(page, node(page, "r30"), { x: start.x, y: treeBox.y + treeBox.height - 4 });
+    await expect(node(page, "r30-c1")).toHaveCount(0);
+    // wait for the auto-scroll to settle at the end of the scroll range
+    let last = -1;
+    await expect
+      .poll(async () => {
+        const top = await tree(page).evaluate((el) => el.scrollTop);
+        const settled = top === last;
+        last = top;
+        return settled;
+      }, { intervals: [300] })
+      .toBe(true);
+    // the dragged row is kept mounted wherever it is: look at the other rows
+    const lastId = await tree(page).evaluate((el) => {
+      const rows = [...el.querySelectorAll<HTMLElement>("[data-row-index]:not([data-dragging])")];
+      rows.sort((a, b) => Number(a.dataset.rowIndex) - Number(b.dataset.rowIndex));
+      return rows[rows.length - 1]!.dataset.nodeId!;
+    });
+    const lastBox = (await node(page, lastId).boundingBox())!;
+    // the last row is inside the window: no blank space after it
+    expect(lastBox.y + lastBox.height).toBeLessThanOrEqual(treeBox.y + treeBox.height + 1);
+    expect(lastBox.y + lastBox.height).toBeGreaterThan(treeBox.y + treeBox.height - 40);
+    await expect(indicator(page)).toBeVisible();
+    const indBox = (await indicator(page).boundingBox())!;
+    expect(indBox.y).toBeGreaterThanOrEqual(treeBox.y - 1);
+    expect(indBox.y).toBeLessThanOrEqual(treeBox.y + treeBox.height + 1);
+    await page.mouse.up();
+    await expect(log(page)).toContainText('"nodeId":"r30"');
+  });
+
+  test("an expanded node with a single child drags and drops",async ({ page }) => {
     await page.goto(url);
     await reveal(page, 30, "r30");
     // r30-c0-g0 holds a single child (r30-c0-g0-x)

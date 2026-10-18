@@ -27,11 +27,11 @@ import type { TermMatch } from "./search";
 import { normalizePersistableState, sameIdSet } from "./persistable-state";
 import {
   collectIds,
-  countVisibleDescendants,
   findFirstNode,
   findDuplicateIds,
   flattenTree,
   getCheckStates,
+  getDragPaddingRows,
   getDropTarget,
   toggleChecked,
   withoutDerived,
@@ -422,14 +422,29 @@ function TreeViewInner<T = unknown>(
     [rows],
   );
 
-  // Hiding the dragged node's descendants must not shrink the scrollable height: the browser
-  // would clamp `scrollTop`, and dnd-kit counts that scroll as drag movement, detaching the
-  // overlay from the pointer. The rows that were hidden keep their (blank) space meanwhile.
+  // Hiding the dragged node's descendants must not shrink the scrollable height below what
+  // the current scroll position needs: the browser would clamp `scrollTop`, and dnd-kit counts
+  // that scroll as drag movement, detaching the overlay from the pointer. Only the space the
+  // scroll position at drag start requires is kept (see `getDragPaddingRows`); keeping every
+  // hidden row would leave a blank tail the auto-scroll could scroll into.
+  // The scroll position is read from the DOM once per drag: the render that starts the drag
+  // still sees the pre-drag layout. Counting from a second flatten (not from the first node
+  // with that id) stays exact when ids are duplicated, which is already reported as an error.
+  const dragScroll = useMemo(() => {
+    const el = activeDragId === null ? null : containerRef.current;
+    return { top: el?.scrollTop ?? 0, view: el?.clientHeight ?? 0 };
+  }, [activeDragId]);
   const hiddenRows = useMemo(() => {
     if (activeDragId === null || layoutExpanded === effectiveExpanded) return 0;
-    const dragged = findFirstNode(data, activeDragId);
-    return dragged ? countVisibleDescendants(dragged, effectiveExpanded) : 0;
-  }, [data, activeDragId, layoutExpanded, effectiveExpanded]);
+    const full = flattenTree(data, effectiveExpanded, search?.visible).length;
+    return getDragPaddingRows(
+      rows.length,
+      full - rows.length,
+      dragScroll.top,
+      height ?? dragScroll.view,
+      rowHeight,
+    );
+  }, [data, activeDragId, layoutExpanded, effectiveExpanded, search, rows.length, dragScroll, height, rowHeight]);
 
   const { start, end, viewport, totalHeight, onScroll, scrollToIndex } = useVirtualRows({
     count: rows.length + hiddenRows,
@@ -650,10 +665,15 @@ function TreeViewInner<T = unknown>(
   const focusedInWindow = focusedIndex >= start && focusedIndex < end;
   // An empty tree has no roving row (focusedIndex -1): nothing to keep mounted.
   const keepTarget = focusedIndex >= 0 && (anchored || hasFocus);
-  const tabbableIndex = focusedInWindow || keepTarget ? focusedIndex : start;
+  // While padding rows keep the scroll height, the window can start past the last row.
+  const tabbableIndex =
+    focusedInWindow || keepTarget ? focusedIndex : Math.max(0, Math.min(start, rows.length - 1));
   const renderedIndexes: number[] = [];
   for (let i = start; i < Math.min(end, rows.length); i++) renderedIndexes.push(i);
   if (keepTarget && !focusedInWindow) renderedIndexes.push(focusedIndex);
+  if (tabbableIndex < rows.length && !renderedIndexes.includes(tabbableIndex)) {
+    renderedIndexes.push(tabbableIndex);
+  }
   // The dragged row stays mounted when scrolled out of the window: unmounting it would
   // unregister the draggable in the middle of the drag.
   const activeIndex = activeDragId === null ? -1 : (firstIndexById.get(activeDragId) ?? -1);

@@ -1,6 +1,23 @@
 import { describe, expect, it } from "vitest";
 import type { TreeNode } from "../../src";
-import { countVisibleDescendants, flattenTree } from "../../src/tree-utils";
+import { countVisibleDescendants, flattenTree, getDragPaddingRows } from "../../src/tree-utils";
+
+describe("getDragPaddingRows", () => {
+  it("adds nothing when the rows already fill scrollTop + viewport", () => {
+    expect(getDragPaddingRows(100, 10, 500, 300, 32)).toBe(0);
+  });
+  it("adds only what the scroll position needs, capped by the hidden rows", () => {
+    // 20 rows (640px), scrolled so that scrollTop + viewport = 960px: 10 rows needed
+    expect(getDragPaddingRows(20, 10, 660, 300, 32)).toBe(10);
+    expect(getDragPaddingRows(20, 100, 660, 300, 32)).toBe(10);
+    expect(getDragPaddingRows(20, 3, 660, 300, 32)).toBe(3);
+    expect(getDragPaddingRows(20, 100, 340, 300, 32)).toBe(0);
+  });
+  it("is 0 without hidden rows or a usable row height", () => {
+    expect(getDragPaddingRows(20, 0, 640, 300, 32)).toBe(0);
+    expect(getDragPaddingRows(20, 5, 640, 300, 0)).toBe(0);
+  });
+});
 
 const tree: TreeNode[] = [
   {

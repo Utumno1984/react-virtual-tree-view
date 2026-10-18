@@ -659,3 +659,20 @@ export function withoutDerived<T>(data: TreeNode<T>[], ids: ReadonlySet<TreeId>)
   for (const id of ids) if (!derived.has(id)) kept.add(id);
   return kept;
 }
+
+/**
+ * Blank rows to keep while a dragged node's descendants are hidden. Only as many as the
+ * scroll position at drag start needs (`scrollTop + viewport`), never more than the rows that
+ * were hidden: keeping them all would leave a blank tail the auto-scroll could reach.
+ */
+export function getDragPaddingRows(
+  rowCount: number,
+  hiddenCount: number,
+  scrollTop: number,
+  viewport: number,
+  rowHeight: number,
+): number {
+  if (hiddenCount <= 0 || !(rowHeight > 0)) return 0;
+  const needed = Math.ceil((Math.max(0, scrollTop) + Math.max(0, viewport)) / rowHeight);
+  return Math.min(hiddenCount, Math.max(0, needed - rowCount));
+}
