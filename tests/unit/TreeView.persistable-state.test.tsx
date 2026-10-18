@@ -513,6 +513,28 @@ describe.each([
       expect(onExpandedChange).not.toHaveBeenCalled();
     });
 
+    it("in StrictMode the cleanup emits a single time", () => {
+      const onStateChange = vi.fn();
+      const onExpandedChange = vi.fn();
+      const element = (data: TreeNode[]) => (
+        <StrictMode>
+          <Component
+            data={data}
+            defaultExpandedIds={["docs", "pics"]}
+            defaultSelectedId="cv"
+            onStateChange={onStateChange}
+            onExpandedChange={onExpandedChange}
+          />
+        </StrictMode>
+      );
+      const { rerender } = render(element(tree()));
+      expect(onStateChange).not.toHaveBeenCalled();
+      rerender(element([{ id: "docs", label: "Documents", children: [] }]));
+      expect(onStateChange).toHaveBeenCalledTimes(1);
+      expect(onStateChange).toHaveBeenCalledWith(state({ expandedIds: ["docs"] }));
+      expect(onExpandedChange).not.toHaveBeenCalled();
+    });
+
     it("does not call when the new data keeps every id", () => {
       const onStateChange = vi.fn();
       const { rerender } = render(

@@ -130,22 +130,28 @@ back on the next mount:
 ```tsx
 import { useState } from "react";
 import { TreeView } from "react-virtual-tree-view";
-import type { TreeViewPersistableState } from "react-virtual-tree-view";
+import type { TreeNode, TreeViewPersistableState } from "react-virtual-tree-view";
 
-function PersistedTree() {
-  // Read the saved state once; null the first time.
+function PersistedTree({ data, isLoading }: { data: TreeNode[]; isLoading: boolean }) {
+  // Read the saved state once; null the first time or when it is unreadable.
   const [saved] = useState<TreeViewPersistableState | null>(() => {
-    const raw = localStorage.getItem("files-tree");
-    return raw ? JSON.parse(raw) : null;
+    try {
+      const raw = localStorage.getItem("files-tree");
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
   });
   // The search field is yours: start it from the saved value too.
   const [query, setQuery] = useState(saved?.searchQuery ?? "");
 
+  // Mount the tree only once `data` is complete (see below).
+  if (isLoading) return <p>Loading...</p>;
   return (
     <>
       <input value={query} onChange={(event) => setQuery(event.target.value)} />
       <TreeView
-        data={files}
+        data={data}
         searchQuery={query}
         initialState={saved ?? undefined}
         onStateChange={(state) => localStorage.setItem("files-tree", JSON.stringify(state))}
@@ -162,6 +168,11 @@ function PersistedTree() {
   gets fresh objects. Opening branches while a search is active is temporary and not reported.
 - With a controlled `selectedId` the prop is what is reported: it fires when the prop changes, the
   click itself is still `onSelect`.
+- **Pass `initialState` only when `data` is already complete.** Ids missing from `data` at mount
+  are dropped and the cleaned state is reported. If the tree mounts with `data={[]}` while the
+  real data is loading, `onStateChange` fires with the empty state, and a handler that saves it
+  overwrites what you had stored. Render the `TreeView` only once the data has arrived (as above),
+  or give it a `key` that changes when the data does, so it remounts with the saved state.
 - `initialState` is read on mount only and replaces `defaultExpandedIds` and `defaultSelectedId`
   entirely (a development warning names them if you pass both). A controlled `selectedId` wins.
 - The library cannot set a controlled prop, so `initialState.searchQuery` is **not** applied:
@@ -169,7 +180,7 @@ function PersistedTree() {
 - Malformed input never throws: invalid parts count as empty, with one development warning.
   Ids missing from `data` are dropped, and `onStateChange` then fires once with the cleaned state.
   The same happens when `data` is replaced and ids vanish (even though `onExpandedChange` stays
-  silent), so the stored state is kept in line with the tree.
+  silent): the reported state only ever contains ids that exist in the current `data`.
 
 ### Empty tree, disabled node, depth limit
 

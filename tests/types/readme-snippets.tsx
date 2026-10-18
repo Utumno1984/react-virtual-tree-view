@@ -105,20 +105,26 @@ export function UncontrolledSelection() {
 
 // --- Persisting the tree state ----------------------------------------------------------
 
-export function PersistedTree() {
-  // Read the saved state once; null the first time.
+export function PersistedTree({ data, isLoading }: { data: TreeNode[]; isLoading: boolean }) {
+  // Read the saved state once; null the first time or when it is unreadable.
   const [saved] = useState<TreeViewPersistableState | null>(() => {
-    const raw = localStorage.getItem("files-tree");
-    return raw ? JSON.parse(raw) : null;
+    try {
+      const raw = localStorage.getItem("files-tree");
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
   });
   // The search field is yours: start it from the saved value too.
   const [query, setQuery] = useState(saved?.searchQuery ?? "");
 
+  // Mount the tree only once `data` is complete (see below).
+  if (isLoading) return <p>Loading...</p>;
   return (
     <>
       <input value={query} onChange={(event) => setQuery(event.target.value)} />
       <TreeView
-        data={files}
+        data={data}
         searchQuery={query}
         initialState={saved ?? undefined}
         onStateChange={(state) => localStorage.setItem("files-tree", JSON.stringify(state))}

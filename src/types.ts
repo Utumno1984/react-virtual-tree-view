@@ -90,11 +90,20 @@ export interface TreeViewProps<T = unknown> {
    * It also fires when a change of `data` makes the tree drop vanished ids (even though
    * `onExpandedChange` stays silent), and once after mount if `initialState` held ids missing
    * from `data`: it reports the cleaned state. There is no debounce: do it in your handler.
+   *
+   * Beware of a tree mounted with `data` still empty or partial (e.g. while loading) together
+   * with `initialState`: the missing ids are dropped and the emptied state is reported, so a
+   * handler that saves it overwrites the stored one. See `initialState`.
    */
   onStateChange?: (state: TreeViewPersistableState) => void;
   /**
    * State to restore, typically the last one received by `onStateChange` and saved. Read on
    * mount only (changing it later does nothing).
+   *
+   * Pass it only when `data` is already complete: ids missing from `data` at mount are
+   * discarded and the cleaned state is reported through `onStateChange`. With `data={[]}` while
+   * loading, the empty state is emitted and a saving handler would overwrite the stored state.
+   * Render the tree once the data has arrived, or remount it with a `key` that changes then.
    *
    * - `expandedIds` and `selectedId` replace `defaultExpandedIds` and `defaultSelectedId`
    *   entirely (both are ignored, with a development warning). A controlled `selectedId`
