@@ -31,6 +31,8 @@ export interface RenderNodeState {
    * `searchQuery`). On overlaps the leftmost start wins, then the longest, then the lowest index.
    */
   termMatches: Array<{ range: [number, number]; termIndex: number }>;
+  /** Checkbox state of the node: `true`, `false` or `"mixed"`; `undefined` without `checkable`. */
+  checkState?: boolean | "mixed";
 }
 
 /** Outcome of a search, handed to `onSearchResult` (e.g. to render one badge per term). */
@@ -138,6 +140,37 @@ export interface TreeViewProps<T = unknown> {
    *   Development builds log a single `console.warn` per mount for all of it.
    */
   initialState?: TreeViewPersistableState;
+  /**
+   * Shows a checkbox on every row (default `false`: no checkbox, nothing else changes). The
+   * checked state is independent of the single selection (`selectedId` / `onSelect`): clicking
+   * the checkbox does not select the row, clicking the row does not check it, and the checkbox
+   * never starts a drag. Space toggles the focused node, Enter still selects. `role="tree"`
+   * gets `aria-multiselectable="true"` and every `treeitem` gets `aria-checked`
+   * (`true` / `false` / `"mixed"`); the checkbox itself is `aria-hidden`, the row carries the state.
+   *
+   * Everything is computed on the whole `data`, not on the visible rows: toggling a parent while
+   * a search hides some children still toggles them, and a parent is `"mixed"` also because of
+   * hidden descendants. A parent's state is derived from its children (stored ids of parents
+   * are ignored), unless it has no enabled child. A disabled node cannot be changed by the user
+   * nor by a cascade, and neither can anything below it; its current state still counts for its
+   * ancestors. See the README, "Checkbox mode".
+   */
+  checkable?: boolean;
+  /**
+   * Controlled checked ids. The state only changes when the parent updates it; `onCheckedChange`
+   * is still called on every user action. Unknown ids are ignored. Memoize the array: it is
+   * turned into a `Set` when its identity changes.
+   */
+  checkedIds?: ReadonlyArray<TreeNode["id"]>;
+  /** Initially checked ids for the uncontrolled mode (read on mount only). */
+  defaultCheckedIds?: ReadonlyArray<TreeNode["id"]>;
+  /**
+   * Called once per user action (checkbox click or Space) with the resulting checked ids: every
+   * node whose state is `true`, ancestors included, in tree order (so it can be fed back as
+   * `checkedIds`). Not called when nothing can change (disabled node), nor when `data` is
+   * replaced and vanished ids are dropped from the uncontrolled state.
+   */
+  onCheckedChange?: (checkedIds: Array<TreeNode["id"]>) => void;
   /** Pixels of indentation per depth level. Default 24. */
   indentation?: number;
   /** Custom row content. Defaults to the node `label`. */

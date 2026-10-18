@@ -26,6 +26,9 @@ export {
   findNodeById,
   getSiblingDropTarget,
   getDropTarget,
+  getCheckStates,
+  getCheckedIds,
+  toggleChecked,
 } from "./tree-utils";
 export type {
   FlattenedNode,
@@ -34,4 +37,6 @@ export type {
   TreeId,
   SiblingDropTarget,
   DropTarget,
+  CheckState,
+  CheckStates,
 } from "./tree-utils";

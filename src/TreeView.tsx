@@ -25,7 +25,14 @@ import {
 } from "./search";
 import type { TermMatch } from "./search";
 import { normalizePersistableState, sameIdSet } from "./persistable-state";
-import { collectIds, findDuplicateIds, flattenTree, getDropTarget } from "./tree-utils";
+import {
+  collectIds,
+  findDuplicateIds,
+  flattenTree,
+  getCheckStates,
+  getDropTarget,
+  toggleChecked,
+} from "./tree-utils";
 import type { DropTarget, FlattenedNode, TreeId } from "./tree-utils";
 import type { TreeDndAdapter } from "./dnd-internal";
 import { createProjectionCache } from "./projection-cache";
@@ -79,6 +86,10 @@ function TreeViewInner<T = unknown>(
     selectedId,
     defaultSelectedId,
     onSelect,
+    checkable = false,
+    checkedIds: checkedIdsProp,
+    defaultCheckedIds,
+    onCheckedChange,
     onStateChange,
     initialState,
     indentation = DEFAULT_INDENTATION,
@@ -145,6 +156,11 @@ function TreeViewInner<T = unknown>(
         : undefined
       : defaultSelectedId,
   );
+  // Uncontrolled checked ids (only meaningful with `checkable`); ids missing from `data` are
+  // never kept.
+  const [uncontrolledChecked, setUncontrolledChecked] = useState<ReadonlySet<TreeId>>(
+    () => new Set((defaultCheckedIds ?? []).filter((id) => allIds.has(id))),
+  );
   // When `data` is replaced, ids that no longer exist in it are dropped from the internal
   // state (uncontrolled selection, expanded nodes) silently: no `onSelect` and no
   // `onExpandedChange`, since it is a consequence of the new `data`, not a user action.
@@ -159,8 +175,20 @@ function TreeViewInner<T = unknown>(
   } | null>(null);
   let uncontrolledSelectedId = uncontrolledSelectedState;
   let expandedNow = expanded;
+  let uncontrolledCheckedNow = uncontrolledChecked;
   if (reconciledData !== data) {
     setReconciledData(data);
+    // Vanished checked ids are dropped silently (no `onCheckedChange`).
+    let keptChecked: Set<TreeId> | null = null;
+    for (const id of uncontrolledChecked) {
+      if (allIds.has(id)) continue;
+      keptChecked ??= new Set(uncontrolledChecked);
+      keptChecked.delete(id);
+    }
+    if (keptChecked) {
+      uncontrolledCheckedNow = keptChecked;
+      setUncontrolledChecked(keptChecked);
+    }
     if (uncontrolledSelectedId !== undefined && !allIds.has(uncontrolledSelectedId)) {
       uncontrolledSelectedId = undefined;
       setUncontrolledSelectedId(undefined);
@@ -486,6 +514,23 @@ function TreeViewInner<T = unknown>(
     onSelect?.(row.item.id, row.item.node);
   };
 
+  // Checkbox mode: the checked set (controlled prop or internal state), and the derived state
+  // of every node, computed on the whole `data` (never on the visible rows) in one O(n) pass.
+  const checkedSet = useMemo<ReadonlySet<TreeId>>(
+    () => (checkedIdsProp !== undefined ? new Set(checkedIdsProp) : uncontrolledCheckedNow),
+    [checkedIdsProp, uncontrolledCheckedNow],
+  );
+  const checkModel = useMemo(
+    () => (checkable ? getCheckStates(data, checkedSet) : null),
+    [checkable, data, checkedSet],
+  );
+  const toggleCheck = (id: TreeId) => {
+    const next = toggleChecked(data, checkedSet, id);
+    if (!next) return;
+    if (checkedIdsProp === undefined) setUncontrolledChecked(new Set(next));
+    onCheckedChange?.(next);
+  };
+
   // Context menu: the node (by reference, ids may repeat), its entries and where it opens.
   const [menu, setMenu] = useState<{
     node: TreeNode<T>;
@@ -549,6 +594,12 @@ function TreeViewInner<T = unknown>(
     scrollToIndex,
     toggle,
     select,
+    toggleCheck: checkable
+      ? (index) => {
+          const row = rows[index];
+          if (row) toggleCheck(row.item.id);
+        }
+      : undefined,
   });
 
   // The roving tabindex row must exist in the DOM, or Tab could not enter the tree on the
@@ -660,6 +711,35 @@ function TreeViewInner<T = unknown>(
         >
           {hasChildren ? (renderIcon ? renderIcon(state) : state.isExpanded ? "▾" : "▸") : null}
         </span>
+        {checkModel && (
+          <input
+            type="checkbox"
+            data-checkbox=""
+            // The row (`treeitem`) carries `aria-checked`; the native control is a pointer
+            // affordance only, so it is hidden from assistive tech and out of the tab order.
+            aria-hidden="true"
+            tabIndex={-1}
+            checked={state.checkState === true}
+            ref={(el) => {
+              if (el) el.indeterminate = state.checkState === "mixed";
+            }}
+            disabled={!interactive || checkModel.locked.has(node.id)}
+            readOnly={!interactive}
+            onChange={interactive ? () => toggleCheck(node.id) : () => {}}
+            // Neither a row click (select) nor the drag sensors must see the pointer.
+            onClick={(event) => event.stopPropagation()}
+            onMouseDown={(event) => {
+              event.stopPropagation();
+              // Keep the keyboard on the row (Space/arrows) instead of on the input.
+              event.preventDefault();
+              event.currentTarget.closest<HTMLElement>('[role="treeitem"]')?.focus({
+                preventScroll: true,
+              });
+            }}
+            onTouchStart={(event) => event.stopPropagation()}
+            style={{ margin: "0 0.5em 0 0", cursor: "pointer" }}
+          />
+        )}
         {renderNode ? renderNode(node, state) : highlight(node.label, state.termMatches)}
       </>
     );
@@ -681,6 +761,7 @@ function TreeViewInner<T = unknown>(
       isMatch,
       matchRanges: termMatches.map((m) => m.range),
       termMatches,
+      checkState: checkModel?.states.get(node.id),
     };
   };
   const classFor = (state: RenderNodeState) =>
@@ -718,6 +799,7 @@ function TreeViewInner<T = unknown>(
         className={className}
         aria-label={ariaLabel}
         aria-labelledby={ariaLabelledBy}
+        aria-multiselectable={checkable ? true : undefined}
         onScroll={onScroll}
         onFocus={keyboard.onTreeFocus}
         onBlur={keyboard.onTreeBlur}
@@ -787,6 +869,12 @@ function TreeViewInner<T = unknown>(
               "aria-haspopup": contextMenu ? ("menu" as const) : undefined,
               "aria-expanded": hasChildren ? state.isExpanded : undefined,
               "aria-selected": state.isSelected,
+              "aria-checked":
+                state.checkState === undefined
+                  ? undefined
+                  : state.checkState === "mixed"
+                    ? ("mixed" as const)
+                    : state.checkState,
               "aria-disabled": state.isDisabled ? true : undefined,
               style: {
                 position: "absolute",
