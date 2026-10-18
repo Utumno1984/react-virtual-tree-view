@@ -38,8 +38,22 @@ test.describe("DraggableTreeView auto-scroll", () => {
     // the indicator follows the new rows under the pointer
     await expect(page.locator("[data-drop-indicator]")).toHaveCount(1);
     // move to the middle of the tree and release over whatever row is there
-    await page.mouse.move(x, box.y + box.height / 2, { steps: 4 });
+    const middle = box.y + box.height / 2;
+    await page.mouse.move(x, middle, { steps: 4 });
     const settled = await scrollTop(page);
+    // Release on the upper zone of the row under the pointer, so the drop is a sibling at the
+    // root: the middle of a row would nest the node into it (row-zone model, #63).
+    const row = await page
+      .getByRole("treeitem")
+      .evaluateAll((els, y) => {
+        for (const el of els) {
+          const r = el.getBoundingClientRect();
+          if (r.top <= y && y < r.bottom) return { top: r.top, height: r.height };
+        }
+        return null;
+      }, middle);
+    if (!row) throw new Error("no row under the pointer");
+    await page.mouse.move(x, row.top + row.height * 0.1, { steps: 2 });
     await page.mouse.up();
     const expectedMin = Math.floor((settled + 150) / 32);
     await expect(log(page)).toContainText('"nodeId":"n0","fromParentId":null,"toParentId":null');

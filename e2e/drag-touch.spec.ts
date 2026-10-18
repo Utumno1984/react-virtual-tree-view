@@ -27,6 +27,14 @@ async function center(page: Page, id: string): Promise<Point> {
   return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 }
 
+/** A point on row `id` inside the given drop zone (upper 25% / middle 50% / lower 25%). */
+async function zone(page: Page, id: string, name: "before" | "inside" | "after"): Promise<Point> {
+  const box = await node(page, id).boundingBox();
+  if (!box) throw new Error(`row ${id} not visible`);
+  const fraction = { before: 0.1, inside: 0.5, after: 0.9 }[name];
+  return { x: box.x + box.width / 2, y: box.y + box.height * fraction };
+}
+
 /** Press, hold past the touch activation delay, then move along `path` (the caller releases). */
 async function longPressAndMove(page: Page, cdp: CDPSession, start: Point, path: Point[]) {
   await touch(cdp, "touchStart", start);
@@ -54,7 +62,8 @@ test.describe("DraggableTreeView touch", () => {
     await expect(node(page, "misc")).toBeVisible();
     const cdp = await page.context().newCDPSession(page);
     const start = await center(page, "A");
-    const end = await center(page, "C");
+    // lower zone of the expanded "C": next sibling of C, after its subtree
+    const end = await zone(page, "C", "after");
 
     await longPressAndMove(page, cdp, start, [
       { x: start.x, y: start.y + 6 },
@@ -79,17 +88,18 @@ test.describe("DraggableTreeView touch", () => {
     expect(style.top).not.toBe("");
   });
 
-  test("a long-press drag moved right nests the node (touch coordinates drive the depth)", async ({
+  test("a long-press drag held on the middle of a row nests the node (touch coordinates drive the zone)", async ({
     page,
   }) => {
     await page.goto(story);
     await expect(node(page, "misc")).toBeVisible();
     const cdp = await page.context().newCDPSession(page);
     const start = await center(page, "B");
+    const end = await zone(page, "A", "inside");
 
     await longPressAndMove(page, cdp, start, [
-      { x: start.x, y: start.y + 6 },
-      ...lerp({ x: start.x, y: start.y + 6 }, { x: start.x + 24, y: start.y + 6 }, 8),
+      { x: start.x, y: start.y - 6 },
+      ...lerp({ x: start.x, y: start.y - 6 }, end, 8),
     ]);
     await expect(page.locator("[data-drop-indicator]")).toHaveAttribute("data-projected-depth", "2");
     await touch(cdp, "touchEnd");
@@ -100,21 +110,25 @@ test.describe("DraggableTreeView touch", () => {
     await expect(node(page, "B")).toHaveAttribute("aria-level", "3");
   });
 
-  test("a long-press drag with a tiny horizontal move does not nest (origin comes from the touch)", async ({
+  test("a long-press drag on the upper zone of a row drops as a sibling, not nested (zone comes from the touch)", async ({
     page,
   }) => {
     await page.goto(story);
     await expect(node(page, "misc")).toBeVisible();
     const cdp = await page.context().newCDPSession(page);
     const start = await center(page, "B");
+    const end = await zone(page, "A", "before");
 
     await longPressAndMove(page, cdp, start, [
-      { x: start.x, y: start.y + 6 },
-      { x: start.x + 4, y: start.y + 6 },
-      { x: start.x + 4, y: start.y + 7 },
+      { x: start.x, y: start.y - 6 },
+      ...lerp({ x: start.x, y: start.y - 6 }, end, 8),
     ]);
+    await expect(page.locator("[data-drop-indicator]")).toHaveAttribute("data-drop-mode", "line");
     await expect(page.locator("[data-drop-indicator]")).toHaveAttribute("data-projected-depth", "1");
     await touch(cdp, "touchEnd");
+    await expect(log(page)).toContainText(
+      '{"nodeId":"B","fromParentId":"p","toParentId":"p","index":0}',
+    );
     await expect(node(page, "B")).toHaveAttribute("aria-level", "2");
   });
 

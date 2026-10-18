@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { center, collectConsole, node, order, storyUrl } from "./helpers";
+import { center, collectConsole, dragToZone, node, order, storyUrl } from "./helpers";
 
 const open = (page: Page, story: string) => page.goto(storyUrl(`treeview-checkable--${story}`));
 const box = (page: Page, id: string) => node(page, id).locator("[data-checkbox]");
@@ -200,12 +200,8 @@ test.describe("checkable", () => {
     await open(page, "draggable");
     await expect(node(page, "docs")).toHaveAttribute("aria-checked", "mixed");
     await expect(node(page, "src")).toHaveAttribute("aria-checked", "mixed");
-    const start = await center(node(page, "cv"));
-    const end = await center(node(page, "util"));
-    await page.mouse.move(start.x + 60, start.y);
-    await page.mouse.down();
-    await page.mouse.move(start.x + 60, start.y + 8, { steps: 3 });
-    await page.mouse.move(end.x + 60, end.y + 6, { steps: 15 });
+    // lower zone of "util": cv becomes the last child of src
+    await dragToZone(page, node(page, "cv"), node(page, "util"), "after");
     await page.mouse.up();
     await expect(node(page, "cv")).toHaveAttribute("aria-checked", "true");
     // docs lost its only checked descendant.
@@ -216,13 +212,12 @@ test.describe("checkable", () => {
 });
 
 test.describe("checkable: a parent emptied by dragging", () => {
+  // Lower zone of the parent "p": the node becomes its next sibling, at the root.
   const dragLeft = async (page: Page, id: string) => {
-    const start = await center(node(page, id));
-    await page.mouse.move(start.x, start.y);
-    await page.mouse.down();
-    await page.mouse.move(start.x, start.y + 8, { steps: 3 });
-    await page.mouse.move(start.x - 24, start.y, { steps: 10 });
+    await dragToZone(page, node(page, id), node(page, "p"), "after");
     await page.mouse.up();
+    // let the drop animation finish: a drag started during it is not picked up
+    await expect(page.locator("[data-drag-overlay]")).toHaveCount(0);
   };
 
   test("does not become checked, whatever the order of the drags", async ({ page }) => {

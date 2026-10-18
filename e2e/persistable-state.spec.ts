@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { center, collectConsole, node, storyUrl } from "./helpers";
+import { collectConsole, dragToZone, node, storyUrl } from "./helpers";
 
 const story = (name: string) => storyUrl(`tests-persistablestate--${name}`);
 const stateLog = (page: Page) => page.getByTestId("state-log");
@@ -143,11 +143,8 @@ test.describe("Tests/PersistableState (#47)", () => {
     await page.goto(story("draggable"));
     await expect(node(page, "readme")).toBeVisible();
     await expect(counter(page)).toHaveText("0");
-    const start = await center(node(page, "readme"));
-    await page.mouse.move(start.x, start.y);
-    await page.mouse.down();
-    await page.mouse.move(start.x, start.y + 8, { steps: 3 });
-    await page.mouse.move(start.x + 24, start.y, { steps: 10 });
+    // middle of the (collapsed) previous sibling "pics": readme becomes its child
+    await dragToZone(page, node(page, "readme"), node(page, "pics"), "inside");
     await expect(page.locator("[data-drop-indicator]")).toHaveAttribute(
       "data-projected-depth",
       "1",

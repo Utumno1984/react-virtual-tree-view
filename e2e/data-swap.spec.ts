@@ -1,6 +1,15 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { center, collectConsole, dragToPoint, node, order, storyUrl } from "./helpers";
+import {
+  center,
+  collectConsole,
+  dragToPoint,
+  dragToZone,
+  moveToZone,
+  node,
+  order,
+  storyUrl,
+} from "./helpers";
 
 const treeStory = storyUrl("treeview-dataswap--default");
 const dragStory = storyUrl("draggabletreeview-dataswap--default");
@@ -260,12 +269,8 @@ test.describe("DraggableTreeView/DataSwap", () => {
     expect(flat.every((id) => id.startsWith("a-"))).toBe(true);
     expect(flat).toHaveLength(16);
 
-    // nesting: a-readme one level to the right goes under its previous sibling a-todo
-    const from = await center(node(page, "a-readme"));
-    await page.mouse.move(from.x, from.y);
-    await page.mouse.down();
-    await page.mouse.move(from.x, from.y + 8, { steps: 3 });
-    await page.mouse.move(from.x + 24, from.y, { steps: 10 });
+    // nesting: a-readme dropped on the middle of its previous sibling a-todo goes under it
+    await dragToZone(page, node(page, "a-readme"), node(page, "a-todo"), "inside");
     await page.mouse.up();
     await expect(page.getByTestId("last-event")).toContainText(
       '"nodeId":"a-readme","fromParentId":null,"toParentId":"a-todo","index":0',
@@ -308,16 +313,19 @@ test.describe("DraggableTreeView/DataSwap", () => {
     await pick(page, "deep");
     await expect(node(page, "c-0-0")).toBeVisible();
     await expect(page.locator('[data-node-id^="a-"]')).toHaveCount(0);
-    const from = await center(node(page, "c-1-0"));
-    await page.mouse.move(from.x, from.y);
-    await page.mouse.down();
-    await page.mouse.move(from.x, from.y + 8, { steps: 3 });
-    await page.mouse.move(from.x + 24, from.y, { steps: 10 });
     const indicator = page.locator("[data-drop-indicator]");
+    // "becomes a child" of any row is refused: no indicator
+    await dragToZone(page, node(page, "c-1-0"), node(page, "c-2-0"), "inside");
+    await expect(indicator).toHaveCount(0);
+    // the sibling zones at the root level are still allowed
+    await moveToZone(page, node(page, "c-2-0"), "after");
     await expect(indicator).toHaveAttribute("data-projected-depth", "0");
-    await expect(indicator).toHaveAttribute("data-depth-clamped", "true");
+    await expect(indicator).toHaveAttribute("data-depth-clamped", "false");
+    // back on the refused zone and release: nothing changes
+    await moveToZone(page, node(page, "c-2-0"), "inside");
+    await expect(indicator).toHaveCount(0);
     await page.mouse.up();
-    // the drop is cut at the root level, i.e. the starting position: no change reported
+    // the refused drop leaves the tree as it was: no change reported
     await expect(page.getByTestId("last-event")).toContainText("none yet");
     await expect(node(page, "c-1-0")).toHaveAttribute("aria-level", "1");
   });
@@ -329,11 +337,7 @@ test.describe("DraggableTreeView/DataSwap", () => {
     await pick(page, "deep");
     await node(page, "c-0-0").locator("[data-toggle]").click();
     await expect(node(page, "c-0-0-leaf")).toBeVisible();
-    const from = await center(node(page, "c-0-0-leaf"));
-    await page.mouse.move(from.x, from.y);
-    await page.mouse.down();
-    await page.mouse.move(from.x, from.y + 8, { steps: 3 });
-    await page.mouse.move(from.x + 24, from.y, { steps: 10 });
+    await dragToZone(page, node(page, "c-0-0-leaf"), node(page, "c-0-1"), "inside");
     const indicator = page.locator("[data-drop-indicator]");
     await expect(indicator).toHaveAttribute("data-projected-depth", "2");
     await expect(indicator).toHaveAttribute("data-depth-clamped", "false");

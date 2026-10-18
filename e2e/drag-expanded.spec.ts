@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { center, collectConsole, dragToPoint, node, order, storyUrl } from "./helpers";
+import { center, collectConsole, dragToPoint, dragToZone, node, order, storyUrl } from "./helpers";
 
 const url = storyUrl("draggabletreeview-draggable--drag-expanded-node");
 const log = (page: Page) => page.getByTestId("last-event");
@@ -82,9 +82,8 @@ test.describe("dragging an expanded node", () => {
   test("nesting an expanded node keeps it expanded with its whole subtree", async ({ page }) => {
     await page.goto(url);
     await reveal(page, 30, "r30");
-    const start = await center(node(page, "r30"));
-    // released on its own row, one indentation right: last child of the previous row (r29)
-    await dragToPoint(page, node(page, "r30"), { x: start.x + 24, y: start.y });
+    // released on the middle of the previous row (r29): becomes its child
+    await dragToZone(page, node(page, "r30"), node(page, "r29"), "inside");
     await page.mouse.up();
     await expect(log(page)).toContainText('"nodeId":"r30","fromParentId":null,"toParentId":"r29"');
     await expect(node(page, "r30")).toHaveAttribute("aria-level", "2");

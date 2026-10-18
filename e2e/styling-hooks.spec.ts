@@ -90,8 +90,13 @@ test("drop indicator: accent line for the sibling zones, highlighted row for 'be
   });
   expect(style).toEqual({ border: "rgb(37, 99, 235)", width: "2px", height: 32 });
 
-  // maxDepth 2 refuses "becomes a child" of a depth-2 row: no indicator at all
+  // maxDepth 2 refuses "becomes a child" of a depth-2 row: no indicator at all. Cancel the
+  // drag first (a drop would nest "cv" under "notes" and make "notes" a subtree of height 1,
+  // which no longer fits after "q2").
+  await page.keyboard.press("Escape");
   await page.mouse.up();
+  // let the cancel animation finish: a drag started during it is not picked up
+  await expect(page.locator("[data-drag-overlay]")).toHaveCount(0);
   await node(page, "reports").locator("[data-toggle]").click();
   await expect(node(page, "q2")).toBeVisible();
   await startDrag(page, node(page, "notes"));
