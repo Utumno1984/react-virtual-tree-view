@@ -231,6 +231,9 @@ export interface TreeViewProps<T = unknown> {
   /**
    * Enables a context menu on the nodes (right click, Shift+F10 or the ContextMenu key).
    * The library defines no actions: `items(node)` returns them. See `TreeContextMenu`.
+   * If a new `data` no longer contains the id of the node the menu is open on, the menu closes
+   * silently (no consumer notification, no `onSelect`, focus is not moved). A node that is only
+   * hidden (closed branch, `searchQuery`) or has the same id with different content keeps it open.
    */
   contextMenu?: TreeContextMenuOptions<T>;
   /** Accessible name of the tree. */

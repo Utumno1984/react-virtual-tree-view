@@ -322,6 +322,11 @@ function TreeWithContextMenu() {
 }
 ```
 
+If a new `data` no longer contains the id of the node the menu is open on, the menu closes
+silently: no item runs, the consumer is not notified and the focus is not moved. A node that is
+only hidden (closed branch, `searchQuery`) or that keeps its id with different content leaves the
+menu open.
+
 `TreeContextMenu` is also exported to use on its own. It renders a `role="menu"` with
 `position: fixed` (no portal), kept inside the viewport:
 

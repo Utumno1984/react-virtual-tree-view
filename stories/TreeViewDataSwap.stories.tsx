@@ -1,8 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { TreeView } from "../src";
-import type { RenderNodeState, TreeNode } from "../src";
+import type { MenuItem, RenderNodeState, TreeNode } from "../src";
 import { DatasetBar } from "./data/DatasetBar";
 import { createDataset } from "./data/dataSwapPresets";
 import type { DatasetName } from "./data/dataSwapPresets";
@@ -24,6 +24,22 @@ function DataSwapDemo({
   const [selected, setSelected] = useState<string>("none");
   const [controlledId, setControlledId] = useState<string | number | null>(null);
   const [expandedEvents, setExpandedEvents] = useState(0);
+  const [menuSelects, setMenuSelects] = useState(0);
+  // Pressing a button outside closes the context menu (a user action), so to swap `data`
+  // while the menu is open there are keyboard shortcuts: Alt+L (large), Alt+V (variant).
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!event.altKey) return;
+      const next: DatasetName | null =
+        event.code === "KeyL" ? "large" : event.code === "KeyV" ? "variant" : null;
+      if (!next) return;
+      event.preventDefault();
+      setName(next);
+      setData(createDataset(next));
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
   return (
     <div className="w-80 space-y-2">
       <DatasetBar
@@ -55,6 +71,11 @@ function DataSwapDemo({
           setControlledId(id);
         }}
         onExpandedChange={() => setExpandedEvents((count) => count + 1)}
+        contextMenu={{
+          items: (): MenuItem[] => [
+            { id: "act", label: "Action", onSelect: () => setMenuSelects((count) => count + 1) },
+          ],
+        }}
         className="rounded border border-gray-200 bg-white p-2 text-sm text-gray-800"
         rowClassName={(state) =>
           `flex items-center gap-1 rounded px-1 py-1 hover:bg-gray-100 ${
@@ -83,6 +104,9 @@ function DataSwapDemo({
       </p>
       <p data-testid="expanded-events" className="text-xs text-gray-600">
         {expandedEvents}
+      </p>
+      <p data-testid="menu-selects" className="text-xs text-gray-600">
+        {menuSelects}
       </p>
     </div>
   );
@@ -115,6 +139,13 @@ type Story = StoryObj<typeof meta>;
  * - expanded nodes and the keyboard-focused node whose id disappeared are dropped silently,
  *   without `onExpandedChange` (the counter below the tree does not move) and an id that
  *   comes back later is not expanded again. Exactly one `treeitem` keeps `tabindex=0`.
+ *
+ * An open context menu (right click a node) follows the same rule: if its node's id is not in
+ * the new tree (open it on a `small` node, click `large`) it closes silently, without running
+ * any item (the `menu-selects` counter does not move). If the id exists in the new tree (open it
+ * on `a-cv`, click `variant`) or the node is only hidden by the search filter, it stays open. Pressing a button closes the menu on its own
+ * (like any press outside), so to swap while it is open use the keyboard: Alt+L (`large`),
+ * Alt+V (`variant`).
  *
  * `defaultExpandedIds` is read on mount only, so `a-docs` is expanded at first and is not
  * again once a swap to a tree without it has removed it. The search field is kept across

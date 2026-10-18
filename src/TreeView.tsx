@@ -540,7 +540,7 @@ function TreeViewInner<T = unknown>(
   };
 
   // Context menu: the node (by reference, ids may repeat), its entries and where it opens.
-  const [menu, setMenu] = useState<{
+  const [menuState, setMenu] = useState<{
     node: TreeNode<T>;
     items: MenuItem<T>[];
     anchor: MenuAnchor;
@@ -549,6 +549,15 @@ function TreeViewInner<T = unknown>(
     source: "pointer" | "keyboard";
     key: number;
   } | null>(null);
+  // If a new `data` no longer contains the node the menu is anchored to, close it silently
+  // (no consumer notification: it is a consequence of `data`, not a user action). Done during
+  // render so a stale menu is never painted. A node that is only hidden (closed branch,
+  // search filter) or whose content changed keeps its id and keeps the menu open.
+  let menu = menuState;
+  if (menu !== null && !allIds.has(menu.node.id)) {
+    menu = null;
+    setMenu(null);
+  }
   const menuCounter = useRef(0);
   const menuItemsFn = contextMenu?.items;
   const openMenu = (
