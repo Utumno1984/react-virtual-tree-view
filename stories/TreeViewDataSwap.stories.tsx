@@ -25,6 +25,7 @@ function DataSwapDemo({
   const [controlledId, setControlledId] = useState<string | number | null>(null);
   const [expandedEvents, setExpandedEvents] = useState(0);
   const [menuSelects, setMenuSelects] = useState(0);
+  const [menuLabel, setMenuLabel] = useState("none");
   // Pressing a button outside closes the context menu (a user action), so to swap `data`
   // while the menu is open there are keyboard shortcuts: Alt+L (large), Alt+V (variant).
   useEffect(() => {
@@ -73,7 +74,14 @@ function DataSwapDemo({
         onExpandedChange={() => setExpandedEvents((count) => count + 1)}
         contextMenu={{
           items: (): MenuItem[] => [
-            { id: "act", label: "Action", onSelect: () => setMenuSelects((count) => count + 1) },
+            {
+              id: "act",
+              label: "Action",
+              onSelect: (target) => {
+                setMenuSelects((count) => count + 1);
+                setMenuLabel(target.label);
+              },
+            },
           ],
         }}
         className="rounded border border-gray-200 bg-white p-2 text-sm text-gray-800"
@@ -108,6 +116,9 @@ function DataSwapDemo({
       <p data-testid="menu-selects" className="text-xs text-gray-600">
         {menuSelects}
       </p>
+      <p data-testid="menu-label" className="text-xs text-gray-600">
+        {menuLabel}
+      </p>
     </div>
   );
 }
@@ -141,11 +152,13 @@ type Story = StoryObj<typeof meta>;
  *   comes back later is not expanded again. Exactly one `treeitem` keeps `tabindex=0`.
  *
  * An open context menu (right click a node) follows the same rule: if its node's id is not in
- * the new tree (open it on a `small` node, click `large`) it closes silently, without running
- * any item (the `menu-selects` counter does not move). If the id exists in the new tree (open it
- * on `a-cv`, click `variant`) or the node is only hidden by the search filter, it stays open. Pressing a button closes the menu on its own
- * (like any press outside), so to swap while it is open use the keyboard: Alt+L (`large`),
- * Alt+V (`variant`).
+ * the new tree it closes silently, without running any item (the `menu-selects` counter does
+ * not move). If the id exists in the new tree, or the node is only hidden by the search filter,
+ * it stays open, and the item receives the new node (`menu-label` shows its label).
+ * Pressing a button closes the menu on its own (like any press outside), so to swap while it
+ * is open use the keyboard: right click a `small` node, then press Alt+L (`large`: the menu
+ * closes); right click `a-cv`, then press Alt+V (`variant`: the menu stays open and the
+ * action receives "CV (updated).pdf").
  *
  * `defaultExpandedIds` is read on mount only, so `a-docs` is expanded at first and is not
  * again once a swap to a tree without it has removed it. The search field is kept across

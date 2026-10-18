@@ -27,6 +27,7 @@ test.describe("TreeView/DataSwap: context menu (#53)", () => {
     await expect(menu(page)).toBeVisible();
     await page.getByRole("menuitem", { name: "Action" }).click();
     await expect(page.getByTestId("menu-selects")).toHaveText("1");
+    await expect(page.getByTestId("menu-label")).toHaveText("CV (updated).pdf");
   });
 
   test("the menu stays open when the node is hidden by the search filter", async ({ page }) => {

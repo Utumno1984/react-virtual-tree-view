@@ -314,6 +314,9 @@ export interface TreeContextMenuOptions<T = unknown> {
   /**
    * Entries for a node. Called for every node, disabled ones included. Returning `[]` means
    * "no menu for this node": the library menu does not open and the native one is not blocked.
+   * It is called when the menu opens: if `data` changes while the menu is open, the entries
+   * stay the ones computed at opening, while the node handed to `onSelect` (and the menu's
+   * aria-label) is the new node with the same id. If the id is gone the menu closes silently.
    */
   items: (node: TreeNode<T>) => MenuItem<T>[];
   className?: string;

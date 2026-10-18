@@ -63,12 +63,16 @@ describe("context menu and a new data (#53)", () => {
   it("stays open when the same id is still present with a different label", () => {
     const { rerender, view, onSelect } = setup();
     fireEvent.contextMenu(row("b"));
-    rerender(view([{ id: "b", label: "Beta (renamed)" }]));
+    rerender(view([{ id: "b", label: "Beta (renamed)", data: { v: 2 } }]));
     expect(menu()).not.toBeNull();
+    expect(menu()!.getAttribute("aria-label")).toContain("Beta (renamed)");
     expect(row("b").textContent).toContain("Beta (renamed)");
     fireEvent.click(screen.getByRole("menuitem"));
     expect(onSelect).toHaveBeenCalledTimes(1);
-    expect(onSelect.mock.calls[0]![0].id).toBe("b");
+    const target = onSelect.mock.calls[0]![0];
+    expect(target.id).toBe("b");
+    expect(target.label).toBe("Beta (renamed)");
+    expect(target.data).toEqual({ v: 2 });
   });
 
   it("stays open when a data change does not touch the anchored node", () => {
@@ -107,6 +111,7 @@ describe("context menu and a new data (#53)", () => {
     fireEvent.contextMenu(row("b"));
     fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
     expect(menu()).toBeNull();
+    expect(document.activeElement).toBe(row("b"));
   });
 
   it("does not move the focus to another node when the menu closes by a data change", () => {

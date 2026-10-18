@@ -391,6 +391,18 @@ export function collectIds<T>(tree: TreeNode<T>[]): Set<TreeId> {
   return ids;
 }
 
+/** First node (document order) with the given id, or undefined. O(n). */
+export function findFirstNode<T>(tree: TreeNode<T>[], id: TreeId): TreeNode<T> | undefined {
+  const stack: TreeNode<T>[] = [];
+  for (let i = tree.length - 1; i >= 0; i--) stack.push(tree[i]!);
+  while (stack.length > 0) {
+    const n = stack.pop()!;
+    if (n.id === id) return n;
+    if (n.children) for (let i = n.children.length - 1; i >= 0; i--) stack.push(n.children[i]!);
+  }
+  return undefined;
+}
+
 /** Ancestor ids from the root down to the parent. Empty for roots / unknown ids. */
 export function getAncestorIds<T>(tree: TreeNode<T>[], id: TreeId): TreeId[] {
   const path: TreeId[] = [];
