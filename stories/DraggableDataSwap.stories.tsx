@@ -101,9 +101,8 @@ type Story = StoryObj<typeof meta>;
  * (the counter below the tree does not move), and exactly one `treeitem` keeps `tabindex=0`.
  * A drop (`onTreeChange`) keeps all ids, so it never resets anything.
  *
- * Note: the development warning "data already exceeds maxDepth" is evaluated when
- * `maxDepth` changes, not when `data` changes, so swapping to a tree deeper than the limit
- * does not warn (tracked in ticket #45).
+ * In development, swapping to a tree deeper than `maxDepth` logs the "data already exceeds
+ * maxDepth" warning once. It re-arms after the data returns within the limit.
  */
 export const Default: Story = {
   args: { maxDepth: DEEP_LEVELS },
