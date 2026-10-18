@@ -25,6 +25,30 @@ export interface RenderNodeState {
   isMatch: boolean;
   /** `[start, end)` offsets of every occurrence of the query in `label`; `[]` unless `isMatch`. */
   matchRanges: Array<[number, number]>;
+  /**
+   * Same ranges as `matchRanges` (`termMatches.map(m => m.range)`) with the term that produced
+   * each: not overlapping, ordered by start, `termIndex` = index in `searchTerms` (0 with
+   * `searchQuery`). On overlaps the leftmost start wins, then the longest, then the lowest index.
+   */
+  termMatches: Array<{ range: [number, number]; termIndex: number }>;
+}
+
+/** Outcome of a search, handed to `onSearchResult` (e.g. to render one badge per term). */
+export interface SearchResult {
+  /**
+   * One entry per element of `searchTerms` (as given), or a single one for `searchQuery`.
+   * Empty when nothing is searched.
+   */
+  terms: Array<{
+    term: string;
+    termIndex: number;
+    /** `false` for empty or whitespace-only terms. */
+    active: boolean;
+    /** Nodes whose label contains the term, even if an overlapping term hides its highlight. */
+    matchCount: number;
+  }>;
+  /** Nodes whose label contains at least one term. */
+  matchCount: number;
 }
 
 /**
@@ -137,7 +161,22 @@ export interface TreeViewProps<T = unknown> {
    */
   searchQuery?: string;
   /**
-   * Rendered next to the tree when `searchQuery` is active and nothing matches. Not announced
+   * Several search terms, each highlighted on its own (`<mark data-term-index="n">`). Active
+   * terms are the non-empty ones after `trim`; when there is at least one, `searchQuery` is
+   * ignored (development warning), otherwise `searchQuery` applies. Same matching as
+   * `searchQuery` (case-insensitive substring, no regex); a node matches when its label
+   * contains any term. Duplicates (after `trim` + lowercase) count as the lowest index.
+   * One tree pass and one automaton per set of terms: the cost does not grow with the number
+   * of terms. Not part of `TreeViewPersistableState`.
+   */
+  searchTerms?: ReadonlyArray<string>;
+  /**
+   * Called after commit when the search result (terms, active flags, counts) changes, with
+   * `terms: []` when the search is cleared. Not repeated for an identical result.
+   */
+  onSearchResult?: (result: SearchResult) => void;
+  /**
+   * Rendered next to the tree when a search is active and nothing matches. Not announced
    * automatically: wrap it in an `aria-live` region yourself if needed.
    */
   noResults?: React.ReactNode;
