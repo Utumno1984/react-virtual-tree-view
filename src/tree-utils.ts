@@ -14,14 +14,17 @@ export interface FlattenedNode<T = unknown> {
 }
 
 export interface Projection {
+  /** Depth the dragged node would get (root = 0). */
   depth: number;
-  /** Minimum depth allowed by the node that follows the drop position. */
+  /** Always equal to `depth` (kept for compatibility: the depth no longer ranges). */
   minDepth: number;
-  /** Maximum depth allowed (previous node and `maxDepth` option, never below `minDepth`). */
+  /** Always equal to `depth` (kept for compatibility: the depth no longer ranges). */
   maxDepth: number;
   parentId: TreeId | null;
-  /** True when `maxDepth` affected the projection, including when it could not be honoured. */
+  /** Always `false` (kept for compatibility): `maxDepth` refuses a zone instead of cutting the depth. */
   clamped: boolean;
+  /** Band of the hovered row the drop falls on. */
+  zone: DropZone;
 }
 
 export interface MoveResult<T = unknown> {
@@ -111,135 +114,57 @@ export function getTreeHeight<T>(tree: TreeNode<T>[]): number {
 }
 
 /**
- * Parent id for the item placed at `overIndex` of `flattened` (the list as it
- * will be after the move) when it sits at `depth`. `null` means root.
+ * Where, relative to the hovered row, the dragged node would land:
+ * - `"before"`: previous sibling of the row (upper band of the row);
+ * - `"inside"`: child of the row, inserted as its FIRST child (middle band);
+ * - `"after"`: next sibling of the row, after the row's whole visible subtree (lower band).
+ */
+export type DropZone = "before" | "inside" | "after";
+
+/** Fraction of the row height taken by each of the upper ("before") and lower ("after") bands. */
+export const DROP_ZONE_EDGE = 0.25;
+
+/**
+ * Zone for a pointer at `fraction` of the hovered row's height (0 = top edge, 1 = bottom edge):
+ * the upper 25% is `"before"`, the lower 25% `"after"`, the middle 50% `"inside"`.
+ */
+export function getDropZone(fraction: number): DropZone {
+  if (fraction < DROP_ZONE_EDGE) return "before";
+  if (fraction >= 1 - DROP_ZONE_EDGE) return "after";
+  return "inside";
+}
+
+/**
+ * Parent id of a node dropped on `zone` of row `overIndex` of `flattened`: the row itself for
+ * `"inside"`, the row's own parent for `"before"` / `"after"`. `null` means root; also `null`
+ * for an out-of-range row.
  */
 export function calculateNewParent<T>(
   flattened: readonly FlattenedNode<T>[],
   overIndex: number,
-  depth: number,
+  zone: DropZone,
 ): TreeId | null {
-  const previous = flattened[overIndex - 1];
-  if (depth <= 0 || !previous) return null;
-  if (depth === previous.depth) return previous.parentId;
-  if (depth > previous.depth) return previous.id;
-  for (let i = overIndex - 2; i >= 0; i--) {
-    const item = flattened[i];
-    if (item && item.depth === depth) return item.parentId;
-  }
-  return null;
+  const over = flattened[overIndex];
+  if (!over) return null;
+  return zone === "inside" ? over.id : over.parentId;
 }
 
 /**
- * Drop projection (same algorithm as the dnd-kit "tree" example) with an
- * optional `maxDepth` that also accounts for the height of the dragged subtree.
- * Returns `null` if the active or over id is not in the list.
- *
- * Known limit with non-conforming data: if the list already contains rows deeper than
- * `maxDepth`, the final slot can be right above a row deeper than `maxDepth` (also after moving
- * past the rows that are too deep for the subtree), or the dragged subtree can be taller than
- * `maxDepth`: the result then stays beyond the limit. `clamped` is `true` there but also for
- * ordinary cuts, so check `depth + getSubtreeHeight(node) > maxDepth` (your `maxDepth`, not
- * `projection.maxDepth`). Details and recipes: "Known limit with non-conforming data" in the README.
+ * Drop projection for a pointer on `zone` of the row `overId` (see `getDropTarget` for the
+ * model and the validity rules). Same as `getDropTarget` but addressed by id and without the
+ * insertion index. Returns `null` when the active or over id is not in the list or the drop is
+ * not valid.
  */
 export function getProjection<T>(
   flattened: readonly FlattenedNode<T>[],
   activeId: TreeId,
   overId: TreeId,
-  dragOffset: number,
-  indentationWidth: number,
+  zone: DropZone,
   maxDepth?: number,
 ): Projection | null {
-  const activeIndex = flattened.findIndex((n) => n.id === activeId);
-  if (activeIndex === -1) return null;
-  const active = flattened[activeIndex];
-  if (!active) return null;
-
-  // Descendants are the contiguous run after the active node with greater depth.
-  let end = activeIndex + 1;
-  while (end < flattened.length && (flattened[end]?.depth ?? 0) > active.depth) end++;
-  const without = flattened.slice(0, activeIndex).concat(flattened.slice(end));
-
-  // Where the active node lands: it takes the place of the over item
-  // (dnd-kit arrayMove semantics), i.e. after it when moving down.
-  let insertAt: number;
-  if (overId === activeId) {
-    insertAt = activeIndex;
-  } else {
-    const overWithout = without.findIndex((n) => n.id === overId);
-    if (overWithout === -1) return null;
-    const overFull = flattened.findIndex((n) => n.id === overId);
-    insertAt = overFull > activeIndex ? overWithout + 1 : overWithout;
-  }
-  const moved = without.slice(0, insertAt).concat(active, without.slice(insertAt));
-  return projectAtSlot(moved, insertAt, dragOffset, indentationWidth, maxDepth).projection;
-}
-
-/**
- * Projection of the item at `moved[initialInsertAt]` (the dragged node in its new place).
- * With `maxDepth`, if the rows that follow are deeper than the node can go (its subtree
- * would exceed the limit), the slot moves down past those rows: the nearest slot that
- * respects the limit. Returns the (possibly rearranged) list and the final slot.
- */
-function projectAtSlot<T>(
-  initial: readonly FlattenedNode<T>[],
-  initialInsertAt: number,
-  dragOffset: number,
-  indentationWidth: number,
-  maxDepth?: number,
-  subtreeHeight?: number,
-): { projection: Projection; moved: readonly FlattenedNode<T>[]; insertAt: number } {
-  let moved = initial;
-  let insertAt = initialInsertAt;
-  const active = moved[insertAt]!;
-  let allowed = Infinity;
-  let rawAllowed = Infinity;
-  if (maxDepth !== undefined) {
-    rawAllowed = maxDepth - (subtreeHeight ?? getSubtreeHeight(active.node));
-    // A subtree taller than the limit goes to the shallowest depth, no exception.
-    allowed = Math.max(0, rawAllowed);
-    let skip = 0;
-    // Rows already deeper than maxDepth (non-conforming data) are left alone: their depth wins.
-    const tooDeep = (d: number) => d > allowed && d <= maxDepth;
-    while (tooDeep(moved[insertAt + 1 + skip]?.depth ?? 0)) skip++;
-    if (skip > 0) {
-      moved = moved
-        .slice(0, insertAt)
-        .concat(
-          moved.slice(insertAt + 1, insertAt + 1 + skip),
-          active,
-          moved.slice(insertAt + 1 + skip),
-        );
-      insertAt += skip;
-    }
-  }
-  const previous = moved[insertAt - 1];
-  const next = moved[insertAt + 1];
-  const prevMax = previous ? previous.depth + 1 : 0;
-  const minDepth = next ? next.depth : 0;
-
-  const projected = active.depth + Math.round(dragOffset / indentationWidth);
-  const neighbourBound = Math.min(Math.max(projected, minDepth), prevMax);
-  let upper = prevMax;
-  let clamped = false;
-  if (maxDepth !== undefined) {
-    if (neighbourBound > rawAllowed || insertAt !== initialInsertAt) clamped = true;
-    upper = Math.min(upper, allowed);
-  }
-  const effectiveMax = Math.max(upper, minDepth);
-  const depth = Math.min(Math.max(projected, minDepth), effectiveMax);
-
-  return {
-    projection: {
-      depth,
-      minDepth,
-      maxDepth: effectiveMax,
-      parentId: calculateNewParent(moved, insertAt, depth),
-      clamped,
-    },
-    moved,
-    insertAt,
-  };
+  const overIndex = flattened.findIndex((n) => n.id === overId);
+  if (overIndex === -1) return null;
+  return getDropTarget(flattened, activeId, overIndex, zone, maxDepth)?.projection ?? null;
 }
 
 export interface DropTarget {
@@ -248,8 +173,9 @@ export interface DropTarget {
   index: number;
   projection: Projection;
   /**
-   * Row index (in `flattened`) above which the drop indicator is drawn: the dragged node
-   * would land between row `slot - 1` and row `slot`.
+   * Row index (in `flattened`) of the drop indicator. For `"before"` / `"after"` the dragged
+   * node lands between row `slot - 1` and row `slot` (a line is drawn above row `slot`); for
+   * `"inside"` it is the hovered row itself, the one to highlight.
    */
   slot: number;
   /** The drop would leave the tree unchanged (same parent, same position). */
@@ -258,83 +184,90 @@ export interface DropTarget {
 
 /**
  * Drop target for a pointer over row `overIndex` of `flattened` (which must not contain the
- * descendants of the dragged node) with the pointer `dragOffset` px to the right of where
- * the drag started. The vertical position picks the slot between rows, the horizontal one
- * the depth (see `getProjection`), so a drop can reorder, nest under the previous row or
- * move up a level. The row under the pointer is the insertion point (before it when moving
- * up, after it and its visible subtree when moving down), whatever its parent: a node can
- * land between the children of another open parent. With `maxDepth` the projected depth is
- * cut so that neither the node nor its deepest descendant exceeds it (`projection.clamped`);
- * pass `subtreeHeight` (see `getSubtreeHeight`) to avoid recomputing it on every call.
- * Returns `null` for unknown ids / out-of-range rows.
+ * descendants of the dragged node), on the vertical band `zone` of that row. Only the hovered
+ * row and the band matter, not the horizontal position of the pointer:
+ *
+ * - `"before"` (upper ~25% of the row): previous sibling of the row, same parent, right before it;
+ * - `"inside"` (middle ~50%): child of the row, inserted as its FIRST child (so it shows right
+ *   below the row once the parent is expanded; a collapsed parent is expanded on drop);
+ * - `"after"` (lower ~25%): next sibling of the row. If the row is expanded this is after its
+ *   whole visible subtree (`slot` is the first row past it).
+ *
+ * Not valid (`null`): the dragged node itself or one of its descendants, an out-of-range row,
+ * an unknown `activeId`, and, with `maxDepth`, a zone that would put the node (with its whole
+ * subtree, see `getSubtreeHeight`) deeper than the limit: `"inside"` needs
+ * `row.depth + 1 + height <= maxDepth`, `"before"` / `"after"` need `row.depth + height <=
+ * maxDepth`. A subtree already taller than `maxDepth` is still allowed at the root level
+ * (the shallowest depth), nowhere else. Pass `subtreeHeight` to avoid recomputing the height on
+ * every call. Disabled nodes are valid targets in every zone: `isDisabled` only prevents
+ * dragging a node. `projection.clamped` is always `false` (the limit refuses a zone instead of
+ * cutting the depth).
  */
 export function getDropTarget<T>(
   flattened: readonly FlattenedNode<T>[],
   activeId: TreeId,
   overIndex: number,
-  dragOffset: number,
-  indentationWidth: number,
+  zone: DropZone,
   maxDepth?: number,
   subtreeHeight?: number,
 ): DropTarget | null {
   const activeIndex = flattened.findIndex((n) => n.id === activeId);
   const active = flattened[activeIndex];
-  if (!active || overIndex < 0 || overIndex >= flattened.length) return null;
+  const over = flattened[overIndex];
+  if (!active || !over || overIndex === activeIndex) return null;
+  // Defensive: a row inside the dragged subtree (normally hidden while dragging).
+  if (overIndex > activeIndex) {
+    let end = activeIndex + 1;
+    while (end < flattened.length && flattened[end]!.depth > active.depth) end++;
+    if (overIndex < end) return null;
+  }
 
-  // `slot`: index in `flattened` before which the node is inserted. The row under the
-  // pointer is the insertion point: before it when moving up, after it (and after its own
-  // visible subtree) when moving down. Rows of other parents are valid slots too; the depth
-  // is then limited by the neighbours (`projectAtSlot`).
-  let slot = activeIndex;
-  if (overIndex < activeIndex) {
+  const depth = zone === "inside" ? over.depth + 1 : over.depth;
+  if (maxDepth !== undefined) {
+    const allowed = Math.max(0, maxDepth - (subtreeHeight ?? getSubtreeHeight(active.node)));
+    if (depth > allowed) return null;
+  }
+
+  // Position of `row` among its siblings, not counting the dragged node.
+  const position = (row: number, depthOfRow: number) => {
+    let count = 0;
+    for (let i = row - 1; i >= 0; i--) {
+      const item = flattened[i]!;
+      if (item.depth < depthOfRow) break;
+      if (item.depth === depthOfRow && i !== activeIndex) count++;
+    }
+    return count;
+  };
+
+  let index: number;
+  let slot: number;
+  if (zone === "inside") {
+    index = 0;
     slot = overIndex;
-  } else if (overIndex > activeIndex) {
-    const overDepth = flattened[overIndex]!.depth;
-    slot = overIndex + 1;
-    while (slot < flattened.length && flattened[slot]!.depth > overDepth) slot++;
-  }
-
-  const without = flattened.slice(0, activeIndex).concat(flattened.slice(activeIndex + 1));
-  const initialInsertAt = slot > activeIndex ? slot - 1 : slot;
-  const initial = without.slice(0, initialInsertAt).concat(active, without.slice(initialInsertAt));
-  const projected = projectAtSlot(
-    initial,
-    initialInsertAt,
-    dragOffset,
-    indentationWidth,
-    maxDepth,
-    subtreeHeight,
-  );
-  const { projection, moved, insertAt } = projected;
-  // The slot may have moved past rows too deep for the limit (see `projectAtSlot`).
-  slot = insertAt > activeIndex ? insertAt + 1 : insertAt;
-
-  const previous = moved[insertAt - 1];
-  let index = 0;
-  if (previous && projection.parentId === previous.id && projection.depth > previous.depth) {
-    // Nested under the previous row. If that row is collapsed its children are hidden
-    // and the node goes after all of them.
-    const following = moved[insertAt + 1];
-    if (following?.parentId !== previous.id) {
-      index = previous.node.children?.length ?? 0;
-      // The dragged node is still counted among its own parent's children.
-      if (previous.id === active.parentId) index = Math.max(0, index - 1);
-    }
+  } else if (zone === "before") {
+    index = position(overIndex, over.depth);
+    slot = overIndex;
   } else {
-    for (let i = 0; i < insertAt; i++) {
-      const item = moved[i]!;
-      if (item.parentId === projection.parentId && item.depth === projection.depth) index++;
-    }
+    index = position(overIndex, over.depth) + 1;
+    slot = overIndex + 1;
+    while (slot < flattened.length && flattened[slot]!.depth > over.depth) slot++;
   }
 
+  const parentId = calculateNewParent(flattened, overIndex, zone);
   let currentIndex = 0;
   for (let i = 0; i < activeIndex; i++) {
     const item = flattened[i]!;
     if (item.parentId === active.parentId && item.depth === active.depth) currentIndex++;
   }
-  const isNoop = projection.parentId === active.parentId && index === currentIndex;
+  const isNoop = parentId === active.parentId && index === currentIndex;
 
-  return { parentId: projection.parentId, index, projection, slot, isNoop };
+  return {
+    parentId,
+    index,
+    projection: { depth, minDepth: depth, maxDepth: depth, parentId, clamped: false, zone },
+    slot,
+    isNoop,
+  };
 }
 
 export interface SiblingDropTarget {

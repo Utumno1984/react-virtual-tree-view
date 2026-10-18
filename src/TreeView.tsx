@@ -33,10 +33,11 @@ import {
   getCheckStates,
   getDragPaddingRows,
   getDropTarget,
+  getDropZone,
   toggleChecked,
   withoutDerived,
 } from "./tree-utils";
-import type { DropTarget, FlattenedNode, TreeId } from "./tree-utils";
+import type { DropTarget, DropZone, FlattenedNode, TreeId } from "./tree-utils";
 import type { TreeDndAdapter } from "./dnd-internal";
 import { createProjectionCache } from "./projection-cache";
 import { DropIndicator } from "./DropIndicator";
@@ -686,13 +687,13 @@ function TreeViewInner<T = unknown>(
   useEffect(() => {
     if (!resolverRef) return;
     // Rebuilt with `rows`, so the cache never outlives the layout it was computed for.
-    const cache = createProjectionCache<DropTarget | null, TreeId>();
+    const cache = createProjectionCache<DropTarget | null, TreeId, DropZone>();
     let flat: FlattenedNode<T>[] | null = null;
     // Offset of the content's top edge from the container's border-box top, at scrollTop 0
     // (padding/border included); measured again only when the cached container rect changes.
     let measuredRect: object | null = null;
     let contentOffset = 0;
-    resolverRef.current = (x, y, activeId, dx, subtreeHeight, geometry) => {
+    resolverRef.current = (x, y, activeId, subtreeHeight, geometry) => {
       const el = containerRef.current;
       const content = contentRef.current;
       if (search || !el || !content || rows.length === 0) return null;
@@ -710,17 +711,20 @@ function TreeViewInner<T = unknown>(
       } else {
         top = content.getBoundingClientRect().top;
       }
-      const overIndex = Math.min(rows.length - 1, Math.max(0, Math.floor((y - top) / rowHeight)));
-      const steps = Math.round(dx / indentation);
-      return cache.get(activeId, overIndex, steps, () => {
+      // Row under the pointer and where the pointer sits inside it (0 = top edge, 1 = bottom
+      // edge): the vertical band picks "before" / "inside" / "after".
+      const rowPosition = (y - top) / rowHeight;
+      const overIndex = Math.min(rows.length - 1, Math.max(0, Math.floor(rowPosition)));
+      const zone = getDropZone(rowPosition - overIndex);
+      return cache.get(activeId, overIndex, zone, () => {
         flat ??= rows.map((row) => row.item);
-        return getDropTarget(flat, activeId, overIndex, dx, indentation, maxDepth, subtreeHeight);
+        return getDropTarget(flat, activeId, overIndex, zone, maxDepth, subtreeHeight);
       });
     };
     return () => {
       resolverRef.current = null;
     };
-  }, [resolverRef, rows, rowHeight, search, indentation, maxDepth]);
+  }, [resolverRef, rows, rowHeight, search, maxDepth]);
 
   const scrollElRef = dnd?.scrollElRef;
   useEffect(() => {

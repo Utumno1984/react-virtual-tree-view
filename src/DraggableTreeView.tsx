@@ -95,8 +95,6 @@ function DraggableTreeViewInner<T = unknown>(
   // includes the scroll that happened during the drag, which the drop resolver already
   // accounts for by reading the live content position, so the pointer is tracked directly.
   const pointer = useRef({ x: 0, y: 0 });
-  // Where the pointer was when the drag started: the horizontal offset sets the depth.
-  const origin = useRef({ x: 0, y: 0 });
   // Height of the dragged subtree, computed once per drag (on start) and reused on every move.
   const subtreeHeight = useRef<number | undefined>(undefined);
   const sensors = useSensors(
@@ -148,7 +146,6 @@ function DraggableTreeViewInner<T = unknown>(
       // Known limitation: this is where the press happened. By activation the pointer has
       // moved a few px (the activation distance); the first move event corrects it.
       pointer.current = getEventPoint(activatorEvent) ?? { x: 0, y: 0 };
-      origin.current = pointer.current;
       const node = maxDepth === undefined ? undefined : findNodeById(dataRef.current, active.id);
       subtreeHeight.current = node ? getSubtreeHeight(node) : undefined;
       setActiveId(active.id);
@@ -179,7 +176,7 @@ function DraggableTreeViewInner<T = unknown>(
 
   useEffect(() => {
     if (activeId === null || hasDuplicateIds) return;
-    // The resolver memoizes by (row under the pointer, indentation steps): while those do
+    // The resolver memoizes by (row under the pointer, zone of that row): while those do
     // not change it returns the same object and the store is not touched.
     let last: DropTarget | null | undefined;
     const refresh = () => {
@@ -189,7 +186,6 @@ function DraggableTreeViewInner<T = unknown>(
           x,
           y,
           activeId,
-          x - origin.current.x,
           subtreeHeight.current,
           geometryRef.current?.(),
         ) ?? null;
@@ -240,7 +236,6 @@ function DraggableTreeViewInner<T = unknown>(
         x,
         y,
         active.id,
-        x - origin.current.x,
         subtreeHeight.current,
         geometryRef.current?.(),
       );
@@ -304,20 +299,20 @@ ForwardedDraggableTreeView.displayName = "DraggableTreeView";
  * `TreeView` with pointer drag & drop to reorder and re-parent a node. `data` is
  * controlled: apply the tree handed to `onTreeChange` to see the move.
  *
- * The row under the pointer picks the position, the horizontal offset from where the drag
- * started picks the depth (one `indentation` per level, limited to what the neighbours
- * allow): right nests under the previous row, left moves up a level. A live indicator shows
- * the projection. The dragged node's descendants are hidden meanwhile and travel with it.
- * Dropping on a collapsed parent expands it. Trees with duplicate ids never report a move
- * and show no indicator.
+ * The row under the pointer and the vertical band of that row decide where the node lands
+ * (the horizontal position is irrelevant): the upper ~25% makes it the previous sibling of
+ * the row, the middle ~50% makes it a child of the row (its FIRST child), the lower ~25% makes
+ * it the next sibling (after the row's visible subtree). A live indicator shows the result: a
+ * line for the two sibling bands, a highlight of the whole row for "becomes a child". The
+ * dragged node's descendants are hidden meanwhile and travel with it. Dropping on a collapsed
+ * parent expands it. Trees with duplicate ids never report a move and show no indicator. The
+ * dragged node itself and a zone refused by `maxDepth` are not drop targets (no indicator,
+ * no move). Disabled nodes cannot be dragged but are valid targets in every band.
  *
- * The row under the pointer is the insertion point whatever its parent (before it when
- * moving up, after it when moving down), so dropping on a row of a different parent moves the
- * node there (unlike a plain same-parent reorder). The target parent is expanded right after
- * `onTreeChange` is called, even if the consumer ignores the new tree.
+ * The target parent is expanded right after `onTreeChange` is called, even if the consumer
+ * ignores the new tree.
  *
- * `maxDepth` known limit with non-conforming `data` (a drop can end up beyond the limit, and
- * `clamped` alone does not tell): see `DraggableTreeViewProps.maxDepth` and the README.
+ * `maxDepth`: see `DraggableTreeViewProps.maxDepth` and the README.
  */
 export const DraggableTreeView = ForwardedDraggableTreeView as <T = unknown>(
   props: DraggableTreeViewProps<T> & { ref?: ForwardedRef<TreeViewHandle> },

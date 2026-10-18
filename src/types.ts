@@ -262,18 +262,14 @@ export interface DraggableTreeViewProps<T = unknown> extends TreeViewProps<T> {
    */
   onTreeChange?: (tree: TreeNode<T>[], event: TreeChangeEvent) => void;
   /**
-   * Maximum depth of the tree (roots are 0), counting the dragged node's own subtree: during
-   * a drag the projection is cut so that neither the node nor any descendant goes deeper
-   * (the drop is not refused). Must be a non-negative integer; anything else warns in
-   * development and means no limit. `data` that already exceeds it is shown as is (with a
-   * development warning): the limit only applies to new drops.
-   *
-   * Known limit with such data: a drop can still end up beyond the limit when the final slot
-   * (also after moving past the rows that are too deep for the dragged subtree) is right above
-   * a row deeper than `maxDepth`, or when the dragged subtree is already taller than `maxDepth`.
-   * `Projection.clamped` is `true` there but also for ordinary cuts; the overshoot is
-   * `depth + getSubtreeHeight(node) > maxDepth`. Recipes (including how to get the node in
-   * `renderDropIndicator` and `onTreeChange`): "Known limit with non-conforming data" in the README.
+   * Maximum depth of the tree (roots are 0), counting the dragged node's own subtree: a drop
+   * zone that would put the node or any descendant deeper is not a valid target (no indicator,
+   * releasing there changes nothing). So "becomes a child" is refused on rows that are too
+   * deep, while the sibling bands of the same row stay valid as long as they fit. Must be a
+   * non-negative integer; anything else warns in development and means no limit. `data` that
+   * already exceeds it is shown as is (with a development warning): the limit only applies to
+   * new drops. A dragged subtree already taller than `maxDepth` can only be dropped at the root
+   * level (the shallowest depth).
    */
   maxDepth?: number;
   /**
@@ -288,11 +284,14 @@ export interface DraggableTreeViewProps<T = unknown> extends TreeViewProps<T> {
   autoScrollMaxSpeed?: number;
   /**
    * Content of the drop indicator shown while dragging, for styling it. It is wrapped in an
-   * element (`data-drop-indicator`, `data-projected-depth`) already positioned between the two
-   * rows and indented to `projection.depth * indentation`. Defaults to a minimal line.
-   * The wrapper also carries `data-depth-clamped`, the same as `projection.clamped` (see
-   * `Projection`): `maxDepth` affected the projection, which includes cases where it could not
-   * be honoured (see `maxDepth`). It receives only the projection; to read the dragged node use
+   * element (`data-drop-indicator`, `data-projected-depth`, `data-drop-zone`, `data-drop-mode`)
+   * already positioned. For the sibling zones (`projection.zone` is `"before"` or `"after"`,
+   * `data-drop-mode="line"`) it sits between the two rows, indented to
+   * `projection.depth * indentation`, and the default content is a line. For `"inside"`
+   * (`data-drop-mode="child"`, "becomes a child") the wrapper covers the whole hovered row
+   * (height = `rowHeight`) and the default content is a highlighted box.
+   * The wrapper also carries `data-depth-clamped`, the same as `projection.clamped`, which is
+   * always `false` now. It receives only the projection; to read the dragged node use
    * `useDndContext().active?.id` in a component you return (README).
    */
   renderDropIndicator?: (projection: Projection) => React.ReactNode;
