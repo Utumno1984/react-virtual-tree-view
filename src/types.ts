@@ -19,11 +19,11 @@ export interface RenderNodeState {
   isSelected: boolean;
   /** The tree has focus and this is its focused row. */
   isFocused: boolean;
-  /** A non-empty `searchQuery` is active (the drag is meant to be disabled meanwhile). */
+  /** A non-empty `searchQuery` or at least one non-empty `searchTerms` entry is active (the drag is meant to be disabled meanwhile). */
   isSearching: boolean;
-  /** Searching, and this node's `label` contains the query. */
+  /** Searching, and this node's `label` contains the query or at least one term. */
   isMatch: boolean;
-  /** `[start, end)` offsets of every occurrence of the query in `label`; `[]` unless `isMatch`. */
+  /** `[start, end)` offsets of the non-overlapping occurrences of the query or terms in `label`; `[]` unless `isMatch`. */
   matchRanges: Array<[number, number]>;
   /**
    * Same ranges as `matchRanges` (`termMatches.map(m => m.range)`) with the term that produced

@@ -290,3 +290,31 @@ describe("structural performance: node reads do not depend on k", () => {
     expect(one.children).toBe(10_000);
   });
 });
+
+describe("search identity and modes", () => {
+  const node = (label: string): TreeNode => ({ id: label, label });
+
+  it("treats a query that looks like an old terms key as a plain query", () => {
+    const c = compileSearch(undefined, "terms\u0000x")!;
+    expect(c.inputs).toEqual([{ term: "terms\u0000x", termIndex: 0, active: true, pattern: 0 }]);
+    expect(collectTermMatches([node("a terms\u0000x b")], c).matches.size).toBe(1);
+    const empty = compileSearch([], "terms\u0000x")!;
+    expect(collectTermMatches([node("terms\u0000x")], empty).matches.size).toBe(1);
+  });
+
+  it("gives different keys to ambiguous term lists", () => {
+    expect(compileSearch(["a\u00001:b"])!.key).not.toBe(compileSearch(["a", "b"])!.key);
+    expect(compileSearch(["a", "", "b"])!.key).not.toBe(compileSearch(["a", "b"])!.key);
+  });
+
+  it("counts a node object that appears twice once per term, like matches", () => {
+    const shared = node("alpha");
+    const found = collectTermMatches([shared, shared], compileSearch(["alp"])!);
+    expect(found.matches.size).toBe(1);
+    expect(found.termCounts).toEqual([1]);
+  });
+
+  it("keeps ranges valid on labels whose lowercase changes length", () => {
+    expect(matchesOf("İx", ["x"]).map((m) => m.range)).toEqual([[1, 2]]);
+  });
+});

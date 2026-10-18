@@ -18,6 +18,7 @@ import type {
 import {
   collectTermMatches,
   compileSearch,
+  hasActiveTerms,
   hasConflictingSearch,
   normalizeQuery,
   searchKey,
@@ -246,10 +247,11 @@ function TreeViewInner<T = unknown>(
   // `searchTerms` may be a new array on every render: the cheap key (O(total term length))
   // decides whether the terms are normalized and the automaton rebuilt.
   const normalizedQuery = searchKey(searchTerms, searchQuery) ?? "";
+  const termsMode = hasActiveTerms(searchTerms);
   const compiled = useMemo(
     () => compileSearch(searchTerms, searchQuery),
-    // `normalizedQuery` is the identity of both inputs.
-    [normalizedQuery],
+    // Key + mode are the identity of both inputs.
+    [normalizedQuery, termsMode],
   );
   const search = useMemo(
     () => (compiled ? collectTermMatches(data, compiled) : null),

@@ -137,13 +137,13 @@ function lowerWithMap(label: string): {
   spanStart: number[] | null;
   spanEnd: number[];
 } {
-  let lowered = label.toLowerCase();
-  if (lowered.length === label.length) return { lowered, spanStart: null, spanEnd: [] };
+  const whole = label.toLowerCase();
+  if (whole.length === label.length) return { lowered: whole, spanStart: null, spanEnd: [] };
   // Some characters change length when lowercased (e.g. "İ"): keep, for every index of the
   // lowered string, the source span it came from, so ranges stay valid on `label`.
   const spanStart: number[] = [];
   const spanEnd: number[] = [];
-  lowered = "";
+  const pieces: string[] = [];
   let source = 0;
   for (const ch of label) {
     const piece = ch.toLowerCase();
@@ -151,10 +151,10 @@ function lowerWithMap(label: string): {
       spanStart.push(source);
       spanEnd.push(source + ch.length);
     }
-    lowered += piece;
+    pieces.push(piece);
     source += ch.length;
   }
-  return { lowered, spanStart, spanEnd };
+  return { lowered: pieces.join(""), spanStart, spanEnd };
 }
 
 export interface LabelMatch {
@@ -226,30 +226,32 @@ export function findTermMatches(
 // Terms
 // ---------------------------------------------------------------------------------------
 
-const TERMS_PREFIX = "terms\u0000";
+/** True when at least one of `searchTerms` is non-empty after `trim`: terms then win over the query. */
+export function hasActiveTerms(searchTerms: ReadonlyArray<string> | undefined | null): boolean {
+  return Array.isArray(searchTerms) && searchTerms.some((raw) => normalizeQuery(raw) !== "");
+}
 
 /**
  * Cheap identity of a search (O(total length of the terms)): lets the caller memoize
  * `compileSearch` even when `searchTerms` is a new array on every render. Case changes give a
  * new key (as they do for a plain `searchQuery`), surrounding spaces do not.
- * `null` when nothing is searched.
+ * `null` when nothing is searched. With terms the key is a JSON encoding of the
+ * `[index, term]` pairs (unambiguous); with a plain query it is the trimmed query. The mode is
+ * never read back from the key (see `hasActiveTerms`): callers memoizing on it add that flag.
  */
 export function searchKey(
   searchTerms: ReadonlyArray<string> | undefined | null,
   searchQuery: string | undefined | null,
 ): string | null {
-  const terms = Array.isArray(searchTerms) ? searchTerms : [];
-  let key = TERMS_PREFIX;
-  let any = false;
-  terms.forEach((raw, i) => {
-    // Trimmed but not lowercased: the reported `term` text must follow what was passed.
-    const term = normalizeQuery(raw);
-    if (term !== "") {
-      any = true;
-      key += `${i}:${term}\u0000`;
-    }
-  });
-  if (any) return key;
+  if (hasActiveTerms(searchTerms)) {
+    const pairs: Array<[number, string]> = [];
+    (searchTerms as ReadonlyArray<string>).forEach((raw, i) => {
+      // Trimmed but not lowercased: the reported `term` text must follow what was passed.
+      const term = normalizeQuery(raw);
+      if (term !== "") pairs.push([i, term]);
+    });
+    return JSON.stringify(pairs);
+  }
   const q = normalizeQuery(searchQuery);
   return q === "" ? null : q;
 }
@@ -259,8 +261,7 @@ export function hasConflictingSearch(
   searchTerms: ReadonlyArray<string> | undefined | null,
   searchQuery: string | undefined | null,
 ): boolean {
-  const key = searchKey(searchTerms, "");
-  return key !== null && normalizeQuery(searchQuery) !== "";
+  return hasActiveTerms(searchTerms) && normalizeQuery(searchQuery) !== "";
 }
 
 /**
@@ -277,7 +278,7 @@ export function compileSearch(
   const patterns: string[] = [];
   const patternTermIndex: number[] = [];
   const inputs: CompiledSearch["inputs"] = [];
-  if (key.startsWith(TERMS_PREFIX)) {
+  if (hasActiveTerms(searchTerms)) {
     const byTerm = new Map<string, number>();
     (searchTerms as ReadonlyArray<string>).forEach((raw, termIndex) => {
       const trimmed = normalizeQuery(raw);
@@ -317,6 +318,7 @@ export function collectTermMatches<T>(
   const visible = new Set<TreeNode<T>>();
   const expandedIds = new Set<TreeId>();
   const termMatches = new Map<TreeNode<T>, TermMatch[]>();
+  const counted = new Set<TreeNode<T>>();
   const patternCounts: number[] = new Array<number>(patternTermIndex.length).fill(0);
 
   // Returns true when the node or any descendant matches.
@@ -324,7 +326,11 @@ export function collectTermMatches<T>(
     const label = node.label;
     const children = node.children;
     const found = findTermMatches(automaton, patternTermIndex, label);
-    for (const pattern of found.patterns) patternCounts[pattern]!++;
+    // The same node object reached twice counts once (as it does in `matches`).
+    if (!counted.has(node)) {
+      counted.add(node);
+      for (const pattern of found.patterns) patternCounts[pattern]!++;
+    }
     let keep = found.termMatches.length > 0;
     if (keep) {
       matches.add(node);
