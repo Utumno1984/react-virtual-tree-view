@@ -1,11 +1,15 @@
 import { expect, test } from "@playwright/test";
 import { collectConsole, storyUrl } from "./helpers";
 
-const dragStory = storyUrl("draggabletreeview-dataswap--default") + "&args=maxDepth:2";
-const count = (w: string[]) => w.filter((m) => m.includes("exceeds maxDepth")).length;
+const dragStory =
+  storyUrl("draggabletreeview-dataswap--default") + "&args=maxDepth:2";
+const count = (w: string[]) =>
+  w.filter((m) => m.includes("exceeds maxDepth")).length;
 
 test.describe("DraggableTreeView maxDepth warning on data change (#45)", () => {
-  test("DataSwap: warns once on deep, silent on repeat, re-arms after small", async ({ page }) => {
+  test("DataSwap: warns once on deep, silent on repeat, re-arms after small", async ({
+    page,
+  }) => {
     const log = collectConsole(page);
     await page.goto(dragStory);
     await expect(page.getByRole("tree")).toBeVisible();
