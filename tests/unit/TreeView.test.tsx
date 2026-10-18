@@ -122,6 +122,7 @@ describe("rendering customisation", () => {
       isSearching: false,
       isMatch: false,
       matchRanges: [],
+      termMatches: [],
     });
     expect(renderNode).toHaveBeenCalledWith(expect.objectContaining({ id: "c" }), {
       depth: 0,
@@ -133,6 +134,7 @@ describe("rendering customisation", () => {
       isSearching: false,
       isMatch: false,
       matchRanges: [],
+      termMatches: [],
     });
     expect(renderNode).toHaveBeenCalledWith(expect.objectContaining({ id: "a2" }), {
       depth: 1,
@@ -144,6 +146,7 @@ describe("rendering customisation", () => {
       isSearching: false,
       isMatch: false,
       matchRanges: [],
+      termMatches: [],
     });
   });
 

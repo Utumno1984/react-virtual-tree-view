@@ -15,7 +15,15 @@ import type {
   ReactElement,
   ReactNode,
 } from "react";
-import { collectMatches, getMatchRanges, normalizeQuery } from "./search";
+import {
+  collectTermMatches,
+  compileSearch,
+  hasActiveTerms,
+  hasConflictingSearch,
+  normalizeQuery,
+  searchKey,
+} from "./search";
+import type { TermMatch } from "./search";
 import { normalizePersistableState, sameIdSet } from "./persistable-state";
 import { collectIds, findDuplicateIds, flattenTree, getDropTarget } from "./tree-utils";
 import type { DropTarget, FlattenedNode, TreeId } from "./tree-utils";
@@ -24,7 +32,7 @@ import { createProjectionCache } from "./projection-cache";
 import { DropIndicator } from "./DropIndicator";
 import { TreeContextMenu } from "./TreeContextMenu";
 import type { MenuAnchor, MenuItem, TreeNode } from "./types";
-import type { RenderNodeState, TreeViewHandle, TreeViewProps } from "./types";
+import type { RenderNodeState, SearchResult, TreeViewHandle, TreeViewProps } from "./types";
 import { useTreeKeyboard } from "./useTreeKeyboard";
 import type { KeyboardRow } from "./useTreeKeyboard";
 import { useVirtualRows } from "./useVirtualRows";
@@ -43,16 +51,20 @@ export function isDevelopment(): boolean {
   }
 }
 
-/** The label with every range wrapped in `<mark>`; the plain string when there is none. */
-function highlight(label: string, ranges: Array<[number, number]>): ReactNode {
-  if (ranges.length === 0) return label;
+/** The label with every match wrapped in `<mark data-term-index>`; the plain string when none. */
+function highlight(label: string, matches: ReadonlyArray<TermMatch>): ReactNode {
+  if (matches.length === 0) return label;
   const parts: ReactNode[] = [];
   let last = 0;
-  ranges.forEach(([start, end], i) => {
+  matches.forEach(({ range: [start, end], termIndex }, i) => {
     const from = Math.max(start, last);
     if (end <= from) return;
     if (from > last) parts.push(label.slice(last, from));
-    parts.push(<mark key={i}>{label.slice(from, end)}</mark>);
+    parts.push(
+      <mark key={i} data-term-index={termIndex}>
+        {label.slice(from, end)}
+      </mark>,
+    );
     last = end;
   });
   if (last < label.length) parts.push(label.slice(last));
@@ -79,6 +91,8 @@ function TreeViewInner<T = unknown>(
     rowClassName,
     emptyState,
     searchQuery,
+    searchTerms,
+    onSearchResult,
     noResults,
     contextMenu,
     "aria-label": ariaLabel,
@@ -140,6 +154,7 @@ function TreeViewInner<T = unknown>(
   // User toggles made while searching (explained below); declared here to be reconciled too.
   const [searchToggles, setSearchToggles] = useState<{
     query: string;
+    termsMode: boolean;
     toggled: ReadonlySet<TreeId>;
   } | null>(null);
   let uncontrolledSelectedId = uncontrolledSelectedState;
@@ -169,7 +184,13 @@ function TreeViewInner<T = unknown>(
         keptToggles ??= new Set(searchToggles.toggled);
         keptToggles.delete(id);
       }
-      if (keptToggles) setSearchToggles({ query: searchToggles.query, toggled: keptToggles });
+      if (keptToggles) {
+        setSearchToggles({
+          query: searchToggles.query,
+          termsMode: searchToggles.termsMode,
+          toggled: keptToggles,
+        });
+      }
     }
   }
   // `selectedId={undefined}` means uncontrolled; `null` is a controlled "nothing selected".
@@ -230,16 +251,63 @@ function TreeViewInner<T = unknown>(
 
   // One O(n) pass per (data, normalized query): matches, their ancestors and the ids to
   // expand. Keyed on the trimmed query so "foo" -> "foo " does not redo the pass.
-  const normalizedQuery = normalizeQuery(searchQuery);
-  const search = useMemo(() => collectMatches(data, normalizedQuery), [data, normalizedQuery]);
+  // `searchTerms` may be a new array on every render: the cheap key (O(total term length))
+  // decides whether the terms are normalized and the automaton rebuilt.
+  const normalizedQuery = searchKey(searchTerms, searchQuery) ?? "";
+  const termsMode = hasActiveTerms(searchTerms);
+  const compiled = useMemo(
+    () => compileSearch(searchTerms, searchQuery),
+    // Key + mode are the identity of both inputs.
+    [normalizedQuery, termsMode],
+  );
+  const search = useMemo(
+    () => (compiled ? collectTermMatches(data, compiled) : null),
+    [data, compiled],
+  );
+  const warnedBothSearch = useRef(false);
+  const bothSearch = hasConflictingSearch(searchTerms, searchQuery);
+  useEffect(() => {
+    if (!bothSearch || warnedBothSearch.current || !isDevelopment()) return;
+    warnedBothSearch.current = true;
+    console.warn(
+      "[react-virtual-tree-view] searchTerms has active terms and searchQuery is not empty: " +
+        "searchQuery is ignored. Pass [...terms, input] to combine them.",
+    );
+  }, [bothSearch]);
+  // Report the result once per change (compared by content, not identity), after commit.
+  const onSearchResultRef = useRef(onSearchResult);
+  onSearchResultRef.current = onSearchResult;
+  const lastReported = useRef(JSON.stringify({ terms: [], matchCount: 0 }));
+  useEffect(() => {
+    const result: SearchResult = search
+      ? {
+          terms: search.compiled.inputs.map((input, i) => ({
+            term: input.term,
+            termIndex: input.termIndex,
+            active: input.active,
+            matchCount: search.termCounts[i]!,
+          })),
+          matchCount: search.matches.size,
+        }
+      : { terms: [], matchCount: 0 };
+    const signature = JSON.stringify(result);
+    if (signature === lastReported.current) return;
+    lastReported.current = signature;
+    onSearchResultRef.current?.(result);
+  }, [search]);
   // While searching, the user's own expand/collapse is stored as the set of ids they toggled
   // (relative to the auto-expanded ones), tied to the normalized query: it survives a new
   // `data` reference, is dropped when the query really changes, and `expanded` is left
   // untouched, so clearing the query restores it exactly.
-  if (searchToggles && searchToggles.query !== normalizedQuery) setSearchToggles(null);
+  const togglesStale =
+    searchToggles !== null &&
+    (searchToggles.query !== normalizedQuery || searchToggles.termsMode !== termsMode);
+  if (togglesStale) setSearchToggles(null);
   const effectiveExpanded = useMemo<ReadonlySet<TreeId>>(() => {
     if (!search) return expandedNow;
-    if (!searchToggles || searchToggles.query !== search.query) return search.expandedIds;
+    if (!searchToggles || togglesStale || searchToggles.query !== search.query) {
+      return search.expandedIds;
+    }
     const next = new Set(search.expandedIds);
     for (const id of searchToggles.toggled) {
       if (!next.delete(id)) next.add(id);
@@ -395,9 +463,11 @@ function TreeViewInner<T = unknown>(
     (id: TreeId) => {
       if (search) {
         setSearchToggles((prev) => {
-          const toggled = new Set(prev && prev.query === search.query ? prev.toggled : []);
+          const toggled = new Set(
+            prev && prev.query === search.query && prev.termsMode === termsMode ? prev.toggled : [],
+          );
           if (!toggled.delete(id)) toggled.add(id);
-          return { query: search.query, toggled };
+          return { query: search.query, termsMode, toggled };
         });
         return;
       }
@@ -406,7 +476,7 @@ function TreeViewInner<T = unknown>(
       setExpanded(next);
       onExpandedChange?.([...next]);
     },
-    [effectiveExpanded, search, onExpandedChange],
+    [effectiveExpanded, search, termsMode, onExpandedChange],
   );
 
   const select = (index: number) => {
@@ -590,7 +660,7 @@ function TreeViewInner<T = unknown>(
         >
           {hasChildren ? (renderIcon ? renderIcon(state) : state.isExpanded ? "▾" : "▸") : null}
         </span>
-        {renderNode ? renderNode(node, state) : highlight(node.label, state.matchRanges)}
+        {renderNode ? renderNode(node, state) : highlight(node.label, state.termMatches)}
       </>
     );
   };
@@ -599,6 +669,7 @@ function TreeViewInner<T = unknown>(
     const { item, isExpanded } = rows[index]!;
     const { node, depth, hasChildren } = item;
     const isMatch = !!search && search.matches.has(node);
+    const termMatches = (isMatch && search?.termMatches.get(node)) || [];
     return {
       depth,
       isExpanded,
@@ -608,7 +679,8 @@ function TreeViewInner<T = unknown>(
       isFocused: hasFocus && index === focusedIndex,
       isSearching: !!search,
       isMatch,
-      matchRanges: isMatch && search ? getMatchRanges(node.label, search.query) : [],
+      matchRanges: termMatches.map((m) => m.range),
+      termMatches,
     };
   };
   const classFor = (state: RenderNodeState) =>

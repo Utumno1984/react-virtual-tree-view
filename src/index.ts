@@ -3,6 +3,7 @@ export type {
   TreeViewProps,
   TreeViewPersistableState,
   RenderNodeState,
+  SearchResult,
   TreeViewHandle,
   TreeChangeEvent,
   DraggableTreeViewProps,

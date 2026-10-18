@@ -21,6 +21,7 @@ import {
 } from "../../src";
 import type {
   MenuItem,
+  SearchResult,
   TreeChangeEvent,
   TreeNode,
   TreeViewHandle,
@@ -101,6 +102,31 @@ export function SearchableTree({ query }: { query: string }) {
 
 export function UncontrolledSelection() {
   return <TreeView data={files} defaultSelectedId="cv" aria-label="Files" />;
+}
+
+// --- Several search terms ---------------------------------------------------------------
+
+export function TermBadges({ terms }: { terms: string[] }) {
+  const [result, setResult] = useState<SearchResult>({ terms: [], matchCount: 0 });
+
+  return (
+    <>
+      <ul>
+        {result.terms.map((t) => (
+          <li key={t.termIndex} data-term-index={t.termIndex}>
+            {t.term} ({t.matchCount})
+          </li>
+        ))}
+      </ul>
+      <TreeView
+        data={files}
+        searchTerms={terms}
+        onSearchResult={setResult}
+        noResults={<p>No results</p>}
+        aria-label="Multi-term search"
+      />
+    </>
+  );
 }
 
 // --- Persisting the tree state ----------------------------------------------------------

@@ -81,7 +81,7 @@ The library never adds a class of its own. You choose them:
 | `contextMenu.className` / `contextMenu.itemClassName` | menu container / each menu item |
 
 `RenderNodeState` (`types.ts`) exposes `depth`, `isExpanded`, `isDisabled`, `hasChildren`, `isSelected`,
-`isFocused`, `isSearching`, `isMatch`, `matchRanges`. Some states exist **only** there and have no attribute
+`isFocused`, `isSearching`, `isMatch`, `matchRanges`, `termMatches`. Some states exist **only** there and have no attribute
 (see below), so with a `rowClassName` function you can style them; with plain CSS you cannot.
 
 ## State to selector cheat sheet
@@ -98,7 +98,8 @@ The library never adds a class of its own. You choose them:
 | drag disabled | `[data-drag-disabled]` |
 | drag overlay | `[data-drag-overlay]` |
 | drop indicator, clamped | `[data-drop-indicator][data-depth-clamped="true"]` |
-| search match | `mark` inside the row (no attribute) |
+| search match | `mark` inside the row |
+| search match of a given term | `mark[data-term-index="n"]` (`n` = index in `searchTerms`; `0` with `searchQuery`) |
 | menu item disabled | `[role="menuitem"][aria-disabled="true"]` |
 | menu item focused | `[role="menuitem"]:focus-visible` |
 
@@ -133,7 +134,9 @@ Candidates for a future ticket, before the API is frozen:
 4. **Focus, expanded, selected and search-match have no `data-*`**, while `data-dragging` and `data-disabled`
    do. Selection/expansion go through ARIA, focus through `:focus`, but `isFocused` (tree has focus AND this
    is its focused row) and `isMatch` exist only in `RenderNodeState`. Search matches are only reachable via
-   `<mark>` (and not at all when `renderNode` is used) or `rowClassName`.
+   `<mark>` (and not at all when `renderNode` is used) or `rowClassName`. Each `<mark>` carries
+   `data-term-index="<n>"` (index of the term in `searchTerms`, `0` for `searchQuery`), so every term can
+   have its own color: `mark[data-term-index="1"] { background: #a5f3fc; }`.
 5. **The drag overlay is half-hooked**: it receives `rowClassName` but none of the row attributes
    (`data-disabled`, `aria-*`, `data-node-id`) and has no state attribute of its own besides `data-drag-overlay`.
    The source row, left in the tree, is the one marked `data-dragging`.
