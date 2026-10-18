@@ -1,5 +1,5 @@
 import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ForwardedRef, ReactElement } from "react";
+import type { CSSProperties, ForwardedRef, ReactElement } from "react";
 import { DndContext, DragOverlay, MouseSensor, TouchSensor, useDraggable, useSensor, useSensors } from "@dnd-kit/core";
 import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import type { ContainerGeometry, DragRowProps, DropResolver, TreeDndAdapter } from "./dnd-internal";
@@ -28,6 +28,17 @@ function getEventPoint(event: Event | null | undefined): { x: number; y: number 
   return { x: source.clientX, y: source.clientY };
 }
 
+/**
+ * Draggable rows opt out of text selection and the iOS long-press callout: the long-press that
+ * starts a touch drag would otherwise start a native text selection (or callout) that steals the
+ * gesture and cancels the drag. Rows that cannot be dragged keep normal text selection.
+ */
+const NO_SELECT_STYLE = {
+  userSelect: "none",
+  WebkitUserSelect: "none",
+  WebkitTouchCallout: "none",
+} as const satisfies CSSProperties;
+
 function DraggableRow({ nodeId, dragDisabled, children, style, ...rest }: DragRowProps) {
   // The draggable id is the node id, never the row position: after a reorder the
   // position belongs to another node, and DragOverlay's drop animation targets the id.
@@ -37,7 +48,7 @@ function DraggableRow({ nodeId, dragDisabled, children, style, ...rest }: DragRo
       ref={setNodeRef}
       {...rest}
       {...listeners}
-      style={style}
+      style={dragDisabled ? style : { ...NO_SELECT_STYLE, ...style }}
       data-dragging={isDragging ? "" : undefined}
       data-drag-disabled={dragDisabled ? "" : undefined}
     >
@@ -139,6 +150,18 @@ function DraggableTreeViewInner<T = unknown>(
   // moveNode addresses nodes by id: with duplicates a move could drop sibling nodes, so no
   // move is reported and no indicator is shown (it would promise a drop that never happens).
   const hasDuplicateIds = useMemo(() => findDuplicateIds(data).length > 0, [data]);
+
+  // While a drag is active no text selection may start (mobile browsers can start one after the
+  // long-press); anything already selected is cleared at the end. Listener removed on cleanup.
+  useEffect(() => {
+    if (activeId === null) return;
+    const block = (event: Event) => event.preventDefault();
+    document.addEventListener("selectstart", block);
+    return () => {
+      document.removeEventListener("selectstart", block);
+      document.getSelection?.()?.removeAllRanges();
+    };
+  }, [activeId]);
 
   useEffect(() => {
     if (activeId === null || hasDuplicateIds) return;

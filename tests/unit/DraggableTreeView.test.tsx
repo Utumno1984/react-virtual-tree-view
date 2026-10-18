@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TreeNode } from "../../src";
 
@@ -111,6 +111,43 @@ describe("DraggableTreeView", () => {
     render(<DraggableTreeView data={dup} />);
     expect(screen.getAllByRole("treeitem")).toHaveLength(2);
     expect(warn).toHaveBeenCalled();
+  });
+
+  it("draggable rows disable text selection and the touch callout; others keep it", () => {
+    render(<DraggableTreeView data={tree} defaultExpandedIds={["p"]} />);
+    for (const id of ["p", "A", "3", "q"]) {
+      expect(row(id).style.userSelect).toBe("none");
+    }
+    // disabled node: nothing to drag, so the text stays selectable
+    expect(row("B").style.userSelect).toBe("");
+    cleanup();
+    render(<DraggableTreeView data={tree} searchQuery="a" />);
+    for (const r of screen.getAllByRole("treeitem")) expect(r.style.userSelect).toBe("");
+    cleanup();
+    render(<TreeView data={tree} defaultExpandedIds={["p"]} />);
+    expect(row("A").style.userSelect).toBe("");
+  });
+
+  it("blocks selectstart only while a drag is active and removes the listener afterwards", () => {
+    render(<DraggableTreeView data={tree} defaultExpandedIds={["p"]} />);
+    const selectStart = () => {
+      const e = new Event("selectstart", { bubbles: true, cancelable: true });
+      document.body.dispatchEvent(e);
+      return e.defaultPrevented;
+    };
+    expect(selectStart()).toBe(false);
+    const a = row("A");
+    fireEvent.mouseDown(a, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.mouseMove(document, { clientX: 10, clientY: 30 });
+    expect(selectStart()).toBe(true);
+    fireEvent.mouseUp(document, { clientX: 10, clientY: 30 });
+    expect(selectStart()).toBe(false);
+    // a second drag on the same node starts clean
+    fireEvent.mouseDown(a, { button: 0, clientX: 10, clientY: 10 });
+    fireEvent.mouseMove(document, { clientX: 10, clientY: 30 });
+    expect(selectStart()).toBe(true);
+    fireEvent.mouseUp(document, { clientX: 10, clientY: 30 });
+    expect(selectStart()).toBe(false);
   });
 
   it("plain TreeView does not register draggables", () => {

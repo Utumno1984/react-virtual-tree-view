@@ -118,6 +118,106 @@ test.describe("DraggableTreeView touch", () => {
     await expect(node(page, "B")).toHaveAttribute("aria-level", "2");
   });
 
+  const selectedText = (page: Page) => page.evaluate(() => window.getSelection()?.toString() ?? "");
+
+  test("draggable rows are not text-selectable, the disabled one is", async ({ page }) => {
+    await page.goto(story);
+    await expect(node(page, "misc")).toBeVisible();
+    const sel = (id: string) => node(page, id).evaluate((el) => getComputedStyle(el).userSelect);
+    expect(await sel("A")).toBe("none");
+    expect(await sel("D")).not.toBe("none");
+  });
+
+  test("the overlay stays visible during the whole long-press gesture and no text gets selected", async ({
+    page,
+  }) => {
+    await page.goto(story);
+    await expect(node(page, "misc")).toBeVisible();
+    const cdp = await page.context().newCDPSession(page);
+    const start = await center(page, "A");
+    const end = await center(page, "C");
+    // a native selection attempt, as a mobile browser would do after the long-press
+    await page.evaluate(() => {
+      (window as unknown as { __selectStartPrevented: boolean[] }).__selectStartPrevented = [];
+      document.addEventListener("selectstart", (e) =>
+        queueMicrotask(() =>
+          (window as unknown as { __selectStartPrevented: boolean[] }).__selectStartPrevented.push(
+            e.defaultPrevented,
+          ),
+        ),
+      );
+    });
+
+    await longPressAndMove(page, cdp, start, [{ x: start.x, y: start.y + 6 }]);
+    await expect(page.locator("[data-drag-overlay]")).toBeVisible();
+    for (const p of lerp({ x: start.x, y: start.y + 6 }, end, 10)) {
+      await touch(cdp, "touchMove", p);
+      await expect(page.locator("[data-drag-overlay]")).toBeVisible();
+    }
+    await page.evaluate(() => document.body.dispatchEvent(new Event("selectstart", { cancelable: true })));
+    expect(
+      await page.evaluate(() => (window as unknown as { __selectStartPrevented: boolean[] }).__selectStartPrevented),
+    ).toEqual([true]);
+    expect(await selectedText(page)).toBe("");
+    await touch(cdp, "touchEnd");
+    await expect(log(page)).toContainText('"nodeId":"A"');
+    expect(await selectedText(page)).toBe("");
+  });
+
+  test("a long-press released without moving to a new place leaves the tree and no selection", async ({
+    page,
+  }) => {
+    await page.goto(story);
+    await expect(node(page, "misc")).toBeVisible();
+    const cdp = await page.context().newCDPSession(page);
+    const start = await center(page, "B");
+    const before = await order(page);
+
+    await longPressAndMove(page, cdp, start, [{ x: start.x, y: start.y + 3 }]);
+    await touch(cdp, "touchEnd");
+
+    await expect(page.locator("[data-drag-overlay]")).toHaveCount(0);
+    expect(await order(page)).toEqual(before);
+    expect(await selectedText(page)).toBe("");
+  });
+
+  test("consecutive long-press drags on the same node work without leftover state", async ({
+    page,
+  }) => {
+    await page.goto(story);
+    await expect(node(page, "misc")).toBeVisible();
+    const cdp = await page.context().newCDPSession(page);
+
+    for (const targetId of ["C", "B"]) {
+      const start = await center(page, "A");
+      const end = await center(page, targetId);
+      await longPressAndMove(page, cdp, start, [
+        { x: start.x, y: start.y + 6 },
+        ...lerp({ x: start.x, y: start.y + 6 }, end, 10),
+      ]);
+      await expect(page.locator("[data-drag-overlay]")).toBeVisible();
+      await touch(cdp, "touchEnd");
+      await expect(page.locator("[data-drag-overlay]")).toHaveCount(0);
+      expect(await selectedText(page)).toBe("");
+    }
+    await expect(log(page)).toContainText('"nodeId":"A"');
+  });
+
+  test("a long-press on a disabled node does not start a drag", async ({ page }) => {
+    await page.goto(story);
+    await expect(node(page, "misc")).toBeVisible();
+    const cdp = await page.context().newCDPSession(page);
+    const start = await center(page, "D");
+
+    await longPressAndMove(page, cdp, start, [
+      { x: start.x, y: start.y + 6 },
+      { x: start.x, y: start.y - 40 },
+    ]);
+    await expect(page.locator("[data-drag-overlay]")).toHaveCount(0);
+    await touch(cdp, "touchEnd");
+    await expect(log(page)).toContainText("onTreeChange: none yet");
+  });
+
   test("a plain swipe scrolls a long tree and does not move any node", async ({ page }) => {
     await page.goto(longStory());
     await expect(node(page, "n0")).toBeVisible();
