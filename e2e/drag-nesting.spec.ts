@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
+import { dragToZone, moveToZone, startDrag } from "./helpers";
 
 const story = (id: string) => `/iframe.html?id=draggabletreeview-draggable--${id}&viewMode=story`;
 const node = (page: Page, id: string) => page.locator(`[data-node-id="${id}"]`);
@@ -8,27 +9,17 @@ const indicator = (page: Page) => page.locator("[data-drop-indicator]");
 const order = (page: Page) =>
   page.getByRole("treeitem").evaluateAll((els) => els.map((el) => el.getAttribute("data-node-id")));
 
-async function center(page: Page, id: string) {
-  const box = await node(page, id).boundingBox();
-  if (!box) throw new Error(`row ${id} not visible`);
-  return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-}
+const INITIAL_ORDER = ["p", "A", "B", "C", "C1", "D", "docs", "cv", "notes", "misc"];
 
-/** Press on `id` and move the pointer by (dx, dy) from the press point; the caller releases. */
-async function dragBy(page: Page, id: string, dx: number, dy = 0) {
-  const start = await center(page, id);
-  await page.mouse.move(start.x, start.y);
-  await page.mouse.down();
-  await page.mouse.move(start.x, start.y + 8, { steps: 3 });
-  await page.mouse.move(start.x + dx, start.y + dy, { steps: 10 });
-}
-
+// Drop model (#63): the zone of the hovered row decides the result, not the horizontal offset.
+// Upper quarter = previous sibling, middle half = first child, lower quarter = next sibling.
 test.describe("DraggableTreeView nesting", () => {
-  test("dragging B right by one indentation nests it as last child of A", async ({ page }) => {
+  test("dropping B on the middle of A nests it as first child of A", async ({ page }) => {
     await page.goto(story("draggable"));
     await expect(node(page, "misc")).toBeVisible();
-    await dragBy(page, "B", 24);
+    await dragToZone(page, node(page, "B"), node(page, "A"), "inside");
     await expect(indicator(page)).toHaveAttribute("data-projected-depth", "2");
+    await expect(indicator(page)).toHaveAttribute("data-drop-zone", "inside");
     await page.mouse.up();
     await expect(log(page)).toContainText(
       '{"nodeId":"B","fromParentId":"p","toParentId":"A","index":0}',
@@ -37,67 +28,73 @@ test.describe("DraggableTreeView nesting", () => {
     await expect(node(page, "B")).toBeVisible();
     await expect(node(page, "B")).toHaveAttribute("aria-level", "3");
     await expect(node(page, "A")).toHaveAttribute("aria-expanded", "true");
-    expect(await order(page)).toEqual(["p", "A", "B", "C", "C1", "D", "docs", "cv", "notes", "misc"]);
+    expect(await order(page)).toEqual(INITIAL_ORDER);
     await expect(indicator(page)).toHaveCount(0);
   });
 
-  test("dragging the only child of C left by one indentation makes it the next sibling of C", async ({
+  test("dropping the only child of C on the lower quarter of C makes it the next sibling of C", async ({
     page,
   }) => {
     await page.goto(story("draggable"));
-    await dragBy(page, "C1", -24);
+    await dragToZone(page, node(page, "C1"), node(page, "C"), "after");
     await expect(indicator(page)).toHaveAttribute("data-projected-depth", "1");
+    await expect(indicator(page)).toHaveAttribute("data-drop-zone", "after");
     await page.mouse.up();
     await expect(log(page)).toContainText(
       '{"nodeId":"C1","fromParentId":"C","toParentId":"p","index":3}',
     );
     await expect(node(page, "C1")).toHaveAttribute("aria-level", "2");
     await expect(node(page, "C")).not.toHaveAttribute("aria-expanded", "true");
-    expect(await order(page)).toEqual(["p", "A", "B", "C", "C1", "D", "docs", "cv", "notes", "misc"]);
+    expect(await order(page)).toEqual(INITIAL_ORDER);
   });
 
   test("nest then un-nest: aria-level goes 2 -> 3 -> 2", async ({ page }) => {
     await page.goto(story("draggable"));
     await expect(node(page, "B")).toHaveAttribute("aria-level", "2");
-    await dragBy(page, "B", 24);
+    await dragToZone(page, node(page, "B"), node(page, "A"), "inside");
     await page.mouse.up();
     await expect(node(page, "B")).toHaveAttribute("aria-level", "3");
     await expect(page.locator("[data-drag-overlay]")).toHaveCount(0);
-    await dragBy(page, "B", -24);
+    // back out: lower quarter of A (A is open, so "after A" is past its visible subtree)
+    await dragToZone(page, node(page, "B"), node(page, "A"), "after");
     await expect(indicator(page)).toHaveAttribute("data-projected-depth", "1");
     await page.mouse.up();
     await expect(node(page, "B")).toHaveAttribute("aria-level", "2");
     await expect(log(page)).toContainText('"nodeId":"B","fromParentId":"A","toParentId":"p","index":1');
   });
 
-  test("the indicator follows the horizontal offset, indented by depth * indentation", async ({
+  test("the indicator follows the zone of the hovered row, not the horizontal offset", async ({
     page,
   }) => {
     await page.goto(story("draggable"));
-    const start = await center(page, "B");
-    await page.mouse.move(start.x, start.y);
-    await page.mouse.down();
-    await page.mouse.move(start.x, start.y + 8, { steps: 3 });
-    await page.mouse.move(start.x, start.y, { steps: 3 });
+    await startDrag(page, node(page, "B"));
+    // upper quarter of C: a line at C's depth (1), indented by depth * indentation
+    await moveToZone(page, node(page, "C"), "before");
+    await expect(indicator(page)).toHaveAttribute("data-drop-mode", "line");
+    await expect(indicator(page)).toHaveAttribute("data-drop-zone", "before");
     await expect(indicator(page)).toHaveAttribute("data-projected-depth", "1");
     await expect(indicator(page)).toHaveCSS("left", "24px");
-    await page.mouse.move(start.x + 24, start.y, { steps: 5 });
+    // middle of C: the whole row is highlighted, one level deeper
+    await moveToZone(page, node(page, "C"), "inside");
+    await expect(indicator(page)).toHaveAttribute("data-drop-mode", "child");
+    await expect(indicator(page)).toHaveAttribute("data-drop-zone", "inside");
     await expect(indicator(page)).toHaveAttribute("data-projected-depth", "2");
-    await expect(indicator(page)).toHaveCSS("left", "48px");
-    // far right: limited to previous row + 1, no skipped levels
-    await page.mouse.move(start.x + 120, start.y, { steps: 5 });
+    await expect(indicator(page)).toHaveCSS("left", "0px");
+    // far right on the same zone: unchanged (the horizontal position is ignored)
+    await moveToZone(page, node(page, "C"), "inside", 120);
     await expect(indicator(page)).toHaveAttribute("data-projected-depth", "2");
-    // back to the origin
-    await page.mouse.move(start.x, start.y, { steps: 5 });
+    // lower quarter of C: a line again
+    await moveToZone(page, node(page, "C"), "after");
+    await expect(indicator(page)).toHaveAttribute("data-drop-mode", "line");
+    await expect(indicator(page)).toHaveAttribute("data-drop-zone", "after");
     await expect(indicator(page)).toHaveAttribute("data-projected-depth", "1");
-    await expect(indicator(page)).toHaveCSS("left", "24px");
     await page.mouse.up();
     await expect(indicator(page)).toHaveCount(0);
   });
 
   test("Esc removes the indicator and changes nothing", async ({ page }) => {
     await page.goto(story("draggable"));
-    await dragBy(page, "B", 24);
+    await dragToZone(page, node(page, "B"), node(page, "A"), "inside");
     await expect(indicator(page)).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(indicator(page)).toHaveCount(0);
@@ -106,12 +103,23 @@ test.describe("DraggableTreeView nesting", () => {
     await expect(node(page, "B")).toHaveAttribute("aria-level", "2");
   });
 
-  test("the first node always projects to depth 0 and dropping it does nothing", async ({ page }) => {
+  test("the upper quarter of the first row projects to depth 0; hovering the dragged row itself shows nothing", async ({
+    page,
+  }) => {
     await page.goto(story("draggable"));
-    await dragBy(page, "p", 72);
-    await expect(indicator(page)).toHaveAttribute("data-projected-depth", "0");
+    // the dragged row is not a valid target: no indicator, dropping it does nothing
+    await dragToZone(page, node(page, "p"), node(page, "p"), "inside");
+    await expect(indicator(page)).toHaveCount(0);
     await page.mouse.up();
     await expect(log(page)).toContainText("none yet");
+    // another row on the upper quarter of the first row becomes the first root
+    await dragToZone(page, node(page, "misc"), node(page, "p"), "before");
+    await expect(indicator(page)).toHaveAttribute("data-projected-depth", "0");
+    await page.mouse.up();
+    await expect(log(page)).toContainText(
+      '{"nodeId":"misc","fromParentId":null,"toParentId":null,"index":0}',
+    );
+    expect((await order(page)).slice(0, 2)).toEqual(["misc", "p"]);
   });
 
   test("nesting under a collapsed parent expands it and shows the moved node", async ({ page }) => {
@@ -119,18 +127,19 @@ test.describe("DraggableTreeView nesting", () => {
     await expect(node(page, "misc")).toBeVisible();
     await expect(node(page, "cv")).toHaveCount(0);
     await expect(node(page, "misc")).toHaveAttribute("aria-level", "1");
-    await dragBy(page, "misc", 24);
+    await dragToZone(page, node(page, "misc"), node(page, "docs"), "inside");
     await expect(indicator(page)).toHaveAttribute("data-projected-depth", "1");
     await page.mouse.up();
+    // documented choice: "inside" inserts as the FIRST child
     await expect(log(page)).toContainText(
-      '{"nodeId":"misc","fromParentId":null,"toParentId":"docs","index":2}',
+      '{"nodeId":"misc","fromParentId":null,"toParentId":"docs","index":0}',
     );
     await expect(node(page, "docs")).toHaveAttribute("aria-expanded", "true");
     await expect(node(page, "misc")).toBeVisible();
     await expect(node(page, "misc")).toHaveAttribute("aria-level", "2");
-    expect(await order(page)).toEqual(["p", "A", "B", "C", "D", "docs", "cv", "notes", "misc"]);
-    // and back out to the root
-    await dragBy(page, "misc", -24);
+    expect(await order(page)).toEqual(["p", "A", "B", "C", "D", "docs", "misc", "cv", "notes"]);
+    // and back out to the root: lower quarter of docs (past its visible subtree)
+    await dragToZone(page, node(page, "misc"), node(page, "docs"), "after");
     await page.mouse.up();
     await expect(node(page, "misc")).toHaveAttribute("aria-level", "1");
   });
@@ -138,7 +147,7 @@ test.describe("DraggableTreeView nesting", () => {
   test("a disabled node can receive a child", async ({ page }) => {
     await page.goto(story("draggable"));
     await expect(node(page, "D")).toHaveAttribute("aria-disabled", "true");
-    await dragBy(page, "docs", 48);
+    await dragToZone(page, node(page, "docs"), node(page, "D"), "inside");
     await expect(indicator(page)).toHaveAttribute("data-projected-depth", "2");
     await page.mouse.up();
     await expect(log(page)).toContainText(
@@ -151,9 +160,10 @@ test.describe("DraggableTreeView nesting", () => {
 
   test("a subtree moves with its node and its descendants change depth", async ({ page }) => {
     await page.goto(story("draggable"));
-    await dragBy(page, "C", 24);
+    await startDrag(page, node(page, "C"));
     // descendants are hidden while dragging
     await expect(node(page, "C1")).toHaveCount(0);
+    await moveToZone(page, node(page, "B"), "inside");
     await page.mouse.up();
     await expect(log(page)).toContainText('"nodeId":"C","fromParentId":"p","toParentId":"B","index":0');
     await expect(node(page, "C")).toHaveAttribute("aria-level", "3");
@@ -162,19 +172,22 @@ test.describe("DraggableTreeView nesting", () => {
 
   test("a node cannot be dropped into itself or its descendants", async ({ page }) => {
     await page.goto(story("draggable"));
-    // C cannot go deeper than previous row + 1, and never inside C1
-    await dragBy(page, "C", 120);
-    await expect(indicator(page)).toHaveAttribute("data-projected-depth", "2");
+    // C hovered on every zone of its own row: never a valid target
+    await startDrag(page, node(page, "C"));
+    // its descendants are not rendered during the drag, so they cannot be hovered either
+    await expect(node(page, "C1")).toHaveCount(0);
+    for (const zone of ["before", "inside", "after"] as const) {
+      await moveToZone(page, node(page, "C"), zone);
+      await expect(indicator(page)).toHaveCount(0);
+    }
     await page.mouse.up();
-    await expect(log(page)).toContainText('"toParentId":"B"');
-    await expect(log(page)).not.toContainText('"toParentId":"C"');
-    await expect(log(page)).not.toContainText('"toParentId":"C1"');
-    expect(await order(page)).toEqual(["p", "A", "B", "C", "C1", "D", "docs", "cv", "notes", "misc"]);
+    await expect(log(page)).toContainText("none yet");
+    expect(await order(page)).toEqual(INITIAL_ORDER);
   });
 
   test("the draggable id stays node.id while nesting", async ({ page }) => {
     await page.goto(story("draggable"));
-    await dragBy(page, "B", 24);
+    await dragToZone(page, node(page, "B"), node(page, "A"), "inside");
     await expect(node(page, "B")).toHaveAttribute("data-dragging", "");
     await expect(node(page, "B")).toHaveAttribute("data-node-id", "B");
     await page.mouse.up();
@@ -185,34 +198,33 @@ test.describe("DraggableTreeView nesting", () => {
     page,
   }) => {
     await page.goto(story("draggable"));
-    // C1 over B's row (same x: the depth stays 3), then Esc
-    const b = await center(page, "B");
-    await dragBy(page, "C1", 0, b.y - (await center(page, "C1")).y);
+    // C1 over the middle of B, then Esc
+    await dragToZone(page, node(page, "C1"), node(page, "B"), "inside");
     await expect(indicator(page)).toBeVisible();
     await page.keyboard.press("Escape");
     await page.mouse.up();
     await expect(log(page)).toContainText("none yet");
-    // now B itself, released on the spot (same row, same steps): nothing may move
-    await dragBy(page, "B", 0);
+    // now B itself, released on the spot (same row, same zone): nothing may move
+    await dragToZone(page, node(page, "B"), node(page, "B"), "inside");
     await page.mouse.up();
     await expect(log(page)).toContainText("none yet");
-    expect(await order(page)).toEqual(["p", "A", "B", "C", "C1", "D", "docs", "cv", "notes", "misc"]);
+    expect(await order(page)).toEqual(INITIAL_ORDER);
   });
 
-  test("an only child released in place does not call onTreeChange", async ({ page }) => {
+  test("an only child dropped where it already is does not call onTreeChange", async ({ page }) => {
     await page.goto(story("draggable"));
-    await dragBy(page, "C1", 0);
+    // middle of its own parent = first child of C = where C1 already is
+    await dragToZone(page, node(page, "C1"), node(page, "C"), "inside");
     await expect(indicator(page)).toHaveAttribute("data-projected-depth", "2");
     await page.mouse.up();
     await expect(log(page)).toContainText("none yet");
   });
 
-  test("a root dropped on a child lands between the children of that open parent", async ({
+  test("a root dropped on the upper quarter of a child lands between the children of that open parent", async ({
     page,
   }) => {
     await page.goto(story("draggable"));
-    const notes = await center(page, "notes");
-    await dragBy(page, "misc", 0, notes.y - (await center(page, "misc")).y);
+    await dragToZone(page, node(page, "misc"), node(page, "notes"), "before");
     await expect(indicator(page)).toHaveAttribute("data-projected-depth", "1");
     await page.mouse.up();
     await expect(log(page)).toContainText(
@@ -221,12 +233,11 @@ test.describe("DraggableTreeView nesting", () => {
     expect(await order(page)).toEqual(["p", "A", "B", "C", "C1", "D", "docs", "cv", "misc", "notes"]);
   });
 
-  test("a root dropped on the first child of an open parent becomes its first child, at any dx", async ({
+  test("a root dropped on the upper quarter of the first child of an open parent becomes its first child", async ({
     page,
   }) => {
     await page.goto(story("draggable"));
-    const a = await center(page, "A");
-    await dragBy(page, "misc", 0, a.y - (await center(page, "misc")).y);
+    await dragToZone(page, node(page, "misc"), node(page, "A"), "before", 90);
     await expect(indicator(page)).toHaveAttribute("data-projected-depth", "1");
     await page.mouse.up();
     await expect(log(page)).toContainText(
@@ -235,18 +246,20 @@ test.describe("DraggableTreeView nesting", () => {
     expect((await order(page)).slice(0, 3)).toEqual(["p", "misc", "A"]);
   });
 
-  test("LargeTree: moving the pointer sideways keeps the indicator in sync", async ({ page }) => {
+  test("LargeTree: moving between zones keeps the indicator in sync", async ({ page }) => {
     await page.goto(story("large-tree"));
     await expect(page.getByRole("treeitem").first()).toBeVisible();
-    // the roots start collapsed: the second one can nest under the first
-    const id = (await order(page))[1]!;
+    // the roots start collapsed
+    const [first, second] = await order(page);
     const t0 = Date.now();
-    await dragBy(page, id, 0);
-    await expect(indicator(page)).toHaveAttribute("data-projected-depth", "0");
-    const here = await center(page, id);
-    await page.mouse.move(here.x + 24, here.y, { steps: 8 });
+    await startDrag(page, node(page, second!));
+    await moveToZone(page, node(page, first!), "inside");
     await expect(indicator(page)).toHaveAttribute("data-projected-depth", "1");
-    await page.mouse.move(here.x + 96, here.y, { steps: 8 });
+    await expect(indicator(page)).toHaveAttribute("data-drop-mode", "child");
+    await moveToZone(page, node(page, first!), "before");
+    await expect(indicator(page)).toHaveAttribute("data-projected-depth", "0");
+    await expect(indicator(page)).toHaveAttribute("data-drop-mode", "line");
+    await moveToZone(page, node(page, first!), "inside", 96);
     await expect(indicator(page)).toHaveAttribute("data-projected-depth", "1");
     await page.mouse.up();
     await expect(indicator(page)).toHaveCount(0);

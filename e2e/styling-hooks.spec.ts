@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { center, dragToPoint, node, storyUrl } from "./helpers";
+import { center, dragToPoint, moveToZone, node, startDrag, storyUrl } from "./helpers";
 
 /** The hooks documented in docs/styling-hooks.md exist in the DOM and the example theme reacts to them. */
 
@@ -60,23 +60,45 @@ test("search highlight wraps matches in mark", async ({ page }) => {
   await expect(page.getByRole("tree").locator("mark").first()).toBeVisible();
 });
 
-test("clamped drop indicator is orange, unclamped is accent", async ({ page }) => {
+// #63: the orange "clamped" indicator is gone (maxDepth now refuses a zone instead of cutting the
+// depth, so `data-depth-clamped` is always "false"); the theme distinguishes the sibling line from
+// the "becomes a child" row highlight instead.
+test("drop indicator: accent line for the sibling zones, highlighted row for 'becomes a child'", async ({
+  page,
+}) => {
+  const marker = page.locator("[data-drop-indicator]");
+  const cv = node(page, "cv");
+
+  // upper quarter of "notes": a line
+  await startDrag(page, cv);
+  await moveToZone(page, node(page, "notes"), "before");
+  await expect(marker).toHaveAttribute("data-drop-mode", "line");
+  await expect(marker).toHaveAttribute("data-depth-clamped", "false");
+  await expect(marker.locator(".rvtv-drop-child")).toHaveCount(0);
+  expect(await marker.locator(".rvtv-drop-line").evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(
+    "rgb(37, 99, 235)",
+  );
+
+  // middle of "notes": the whole row is highlighted
+  await moveToZone(page, node(page, "notes"), "inside");
+  await expect(marker).toHaveAttribute("data-drop-mode", "child");
+  await expect(marker.locator(".rvtv-drop-line")).toHaveCount(0);
+  const child = marker.locator(".rvtv-drop-child");
+  const style = await child.evaluate((el) => {
+    const s = getComputedStyle(el);
+    return { border: s.borderTopColor, width: s.borderTopWidth, height: el.getBoundingClientRect().height };
+  });
+  expect(style).toEqual({ border: "rgb(37, 99, 235)", width: "2px", height: 32 });
+
+  // maxDepth 2 refuses "becomes a child" of a depth-2 row: no indicator at all
+  await page.mouse.up();
   await node(page, "reports").locator("[data-toggle]").click();
   await expect(node(page, "q2")).toBeVisible();
-  // dragging up over "pics" inserts before it, i.e. right after the depth-2 row Q2
-  const q2 = await center(node(page, "pics"));
-  const marker = page.locator("[data-drop-indicator]");
-  const color = () => marker.locator(".rvtv-drop-line").evaluate((el) => getComputedStyle(el).backgroundColor);
-
-  // far to the right of a depth-2 row: projected depth 3 is cut to maxDepth 2
-  await dragToPoint(page, node(page, "notes"), { x: q2.x + 150, y: q2.y });
-  await expect(marker).toHaveAttribute("data-depth-clamped", "true");
-  expect(await color()).toBe("rgb(245, 158, 11)");
-
-  // back to the left the projection is within the limit
-  await page.mouse.move(q2.x - 100, q2.y,{ steps: 10 });
-  await expect(marker).toHaveAttribute("data-depth-clamped", "false");
-  expect(await color()).toBe("rgb(37, 99, 235)");
+  await startDrag(page, node(page, "notes"));
+  await moveToZone(page, node(page, "q2"), "inside");
+  await expect(marker).toHaveCount(0);
+  await moveToZone(page, node(page, "q2"), "after");
+  await expect(marker).toHaveAttribute("data-drop-mode", "line");
   await page.mouse.up();
 });
 

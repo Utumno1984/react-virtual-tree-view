@@ -30,23 +30,28 @@ test("the indicator shows where the node really lands (depth and row), maxDepth 
     const before = await rows(page);
     const active = before[Math.floor(rand() * before.length)]!;
     const over = before[Math.floor(rand() * before.length)]!;
-    const dx = Math.floor(rand() * 260) - 60;
+    // anywhere in the row: the vertical band decides the zone, the horizontal offset is ignored
+    const fraction = 0.02 + rand() * 0.96;
     const sx = 100;
     const sy = (active.top + active.bottom) / 2;
     await page.mouse.move(sx, sy);
     await page.mouse.down();
     await page.mouse.move(sx, sy + 8, { steps: 3 });
-    await page.mouse.move(sx + dx, (over.top + over.bottom) / 2 + (rand() < 0.5 ? -6 : 6), { steps: 10 });
+    await page.mouse.move(sx + Math.floor(rand() * 200) - 60, over.top + (over.bottom - over.top) * fraction, {
+      steps: 10,
+    });
     const ind = page.locator("[data-drop-indicator]");
     if ((await ind.count()) === 0) {
       await page.mouse.up();
       continue;
     }
     const depth = Number(await ind.getAttribute("data-projected-depth"));
+    const childMode = (await ind.getAttribute("data-drop-mode")) === "child";
     const iy = (await ind.boundingBox())!.y;
-    // Row right above the indicator, among the rows laid out during the drag.
+    // Rows laid out during the drag: the one right above a line, or the highlighted one.
     const during = await rows(page);
     const above = [...during].reverse().find((r) => r.bottom <= iy + 3 && r.id !== active.id);
+    const highlighted = during.find((r) => Math.abs(r.top - iy) <= 3);
     await page.mouse.up();
     const after = await rows(page);
     const pos = after.findIndex((r) => r.id === active.id);
@@ -56,12 +61,17 @@ test("the indicator shows where the node really lands (depth and row), maxDepth 
     if (Math.max(...after.map((r) => r.level)) > 3) mismatches.push(`#${n} exceeded maxDepth: ${after.map((r) => r.level)}`);
     if (unchanged) continue;
     checked++;
-    const label = `#${n} ${active.id}->${over.id} dx=${dx}`;
+    const label = `#${n} ${active.id}->${over.id} @${fraction.toFixed(2)}`;
     if (after[pos]!.level - 1 !== depth) mismatches.push(`${label}: indicator depth ${depth}, landed ${after[pos]!.level - 1}`);
-    // The row above the indicator must be the one that precedes the node, or one of its ancestors' subtree end.
     const prevAfter = after[pos - 1]?.id;
-    if (above && prevAfter !== above.id) mismatches.push(`${label}: row above indicator ${above.id}, row above landed node ${prevAfter}`);
-    if (!above && pos !== 0) mismatches.push(`${label}: indicator at top but node landed at ${pos}`);
+    if (childMode) {
+      // "becomes a child": the highlighted row is the new parent and the node is its first child
+      if (!highlighted || prevAfter !== highlighted.id) mismatches.push(`${label}: highlighted ${highlighted?.id}, row above landed node ${prevAfter}`);
+    } else {
+      // The row above the indicator must be the one that precedes the node, or one of its ancestors' subtree end.
+      if (above && prevAfter !== above.id) mismatches.push(`${label}: row above indicator ${above.id}, row above landed node ${prevAfter}`);
+      if (!above && pos !== 0) mismatches.push(`${label}: indicator at top but node landed at ${pos}`);
+    }
   }
   console.log("checked drops:", checked);
   expect(mismatches).toEqual([]);

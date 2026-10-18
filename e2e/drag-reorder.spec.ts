@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
+import { zonePoint } from "./helpers";
 
 const story = (id: string) => `/iframe.html?id=draggabletreeview-draggable--${id}&viewMode=story`;
 const node = (page: Page, id: string) => page.locator(`[data-node-id="${id}"]`);
@@ -29,9 +30,9 @@ test.describe("DraggableTreeView reorder", () => {
     await page.goto(story("draggable"));
     await expect(node(page, "misc")).toBeVisible();
     expect(await order(page)).toEqual(["p", "A", "B", "C", "C1", "D", "docs", "cv", "notes", "misc"]);
-    await dragTo(page, "A", await center(page, "C"));
+    await dragTo(page, "A", await zonePoint(node(page, "C"), "after"));
     await page.mouse.up();
-    // C1 is C's child: the subtree stays under C, and A lands after C's position.
+    // C1 is C's child: the subtree stays under C, and A lands after C's visible subtree.
     await expect
       .poll(() => order(page))
       .toEqual(["p", "B", "C", "C1", "A", "D", "docs", "cv", "notes", "misc"]);
@@ -40,18 +41,20 @@ test.describe("DraggableTreeView reorder", () => {
     );
   });
 
-  test("hovering a child of an expanded sibling drops after that sibling", async ({ page }) => {
+  test("hovering the lower quarter of a child of an expanded sibling drops among that sibling's children", async ({
+    page,
+  }) => {
     await page.goto(story("draggable"));
-    await dragTo(page, "A", await center(page, "C1"));
+    await dragTo(page, "A", await zonePoint(node(page, "C1"), "after"));
     await page.mouse.up();
-    await expect(log(page)).toContainText('"nodeId":"A","fromParentId":"p","toParentId":"p","index":2');
+    await expect(log(page)).toContainText('"nodeId":"A","fromParentId":"p","toParentId":"C","index":1');
   });
 
   test("moving a node with children takes the whole subtree; descendants are hidden while dragging", async ({
     page,
   }) => {
     await page.goto(story("draggable"));
-    await dragTo(page, "C", await center(page, "A"));
+    await dragTo(page, "C", await zonePoint(node(page, "A"), "before"));
     await expect(node(page, "C1")).toHaveCount(0);
     await page.mouse.up();
     await expect(node(page, "C1")).toBeVisible();
@@ -91,7 +94,7 @@ test.describe("DraggableTreeView reorder", () => {
     page,
   }) => {
     await page.goto(story("draggable"));
-    await dragTo(page, "A", await center(page, "D"));
+    await dragTo(page, "A", await zonePoint(node(page, "D"), "after"));
     await page.mouse.up();
     await expect(page.locator("[data-drag-overlay]")).toHaveCount(0);
     const moved = await node(page, "A").boundingBox();
