@@ -300,6 +300,10 @@ cuts that honour the limit, so it is not enough on its own. The overshoot is
 The library defines no actions: you return them from `items(node)`. Returning `[]` means no menu for
 that node. The menu opens with right click, Shift+F10 or the ContextMenu key.
 
+`items(node)` runs when the menu opens. If `data` changes while the menu is open, the menu closes
+silently when the node's id is gone; otherwise it stays open with the entries computed at opening,
+and `onSelect` receives the new node with that id (first occurrence if ids repeat).
+
 ```tsx
 import { TreeView } from "react-virtual-tree-view";
 import type { MenuItem, TreeNode } from "react-virtual-tree-view";
@@ -321,6 +325,11 @@ function TreeWithContextMenu() {
   );
 }
 ```
+
+If a new `data` no longer contains the id of the node the menu is open on, the menu closes
+silently: no item runs, the consumer is not notified and the focus is not moved. A node that is
+only hidden (closed branch, `searchQuery`) or that keeps its id with different content leaves the
+menu open.
 
 `TreeContextMenu` is also exported to use on its own. It renders a `role="menu"` with
 `position: fixed` (no portal), kept inside the viewport:

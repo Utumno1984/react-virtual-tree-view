@@ -27,6 +27,7 @@ import type { TermMatch } from "./search";
 import { normalizePersistableState, sameIdSet } from "./persistable-state";
 import {
   collectIds,
+  findFirstNode,
   findDuplicateIds,
   flattenTree,
   getCheckStates,
@@ -540,8 +541,9 @@ function TreeViewInner<T = unknown>(
   };
 
   // Context menu: the node (by reference, ids may repeat), its entries and where it opens.
-  const [menu, setMenu] = useState<{
+  const [menuState, setMenu] = useState<{
     node: TreeNode<T>;
+    data: TreeNode<T>[];
     items: MenuItem<T>[];
     anchor: MenuAnchor;
     rowEl: HTMLElement;
@@ -549,6 +551,25 @@ function TreeViewInner<T = unknown>(
     source: "pointer" | "keyboard";
     key: number;
   } | null>(null);
+  // If a new `data` no longer contains the node the menu is anchored to, close it silently
+  // (no consumer notification: it is a consequence of `data`, not a user action). Done during
+  // render so a stale menu is never painted. A node that is only hidden (closed branch,
+  // search filter) or whose content changed keeps its id and keeps the menu open.
+  // If the id is still there the menu follows the node: `menu.node` becomes the new node of
+  // that id (first occurrence if ids repeat), so the aria-label and the `onSelect` argument are
+  // never stale. `items` stay the ones computed when the menu opened. The O(n) lookup runs
+  // only while a menu is open and `data` changed since the last resolution.
+  let menu = menuState;
+  if (menu !== null && menu.data !== data) {
+    if (!allIds.has(menu.node.id)) {
+      menu = null;
+      setMenu(null);
+    } else {
+      const fresh = findFirstNode(data, menu.node.id) ?? menu.node;
+      menu = { ...menu, node: fresh, data };
+      setMenu(menu);
+    }
+  }
   const menuCounter = useRef(0);
   const menuItemsFn = contextMenu?.items;
   const openMenu = (
@@ -565,6 +586,7 @@ function TreeViewInner<T = unknown>(
     }
     setMenu({
       node,
+      data,
       items,
       anchor,
       rowEl,
