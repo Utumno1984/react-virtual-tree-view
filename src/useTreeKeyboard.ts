@@ -23,6 +23,8 @@ interface Options {
   scrollToIndex: (index: number) => void;
   toggle: (id: TreeId) => void;
   select: (index: number) => void;
+  /** Checkbox mode: Space toggles the checked state instead of selecting. */
+  toggleCheck?: (index: number) => void;
 }
 
 /**
@@ -38,6 +40,7 @@ export function useTreeKeyboard({
   scrollToIndex,
   toggle,
   select,
+  toggleCheck,
 }: Options) {
   const [focusedIdState, setFocusedId] = useState<TreeId | null>(null);
   // The focused id vanished from `data`: drop it from the state during render (no flash,
@@ -128,8 +131,11 @@ export function useTreeKeyboard({
       case "End":
         focusIndex(rows.length - 1);
         break;
-      case "Enter":
       case " ":
+        if (toggleCheck) toggleCheck(index);
+        else select(index);
+        break;
+      case "Enter":
         select(index);
         break;
       default:

@@ -219,6 +219,19 @@ export function StandaloneContextMenu() {
   );
 }
 
+export function CheckableTree() {
+  const [checked, setChecked] = useState<Array<string | number>>(["cv"]);
+  return (
+    <TreeView
+      data={files}
+      aria-label="Files"
+      checkable
+      checkedIds={checked}
+      onCheckedChange={setChecked}
+    />
+  );
+}
+
 // --- Helpers ----------------------------------------------------------------------------
 
 export function moveExample() {
