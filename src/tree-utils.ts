@@ -194,7 +194,10 @@ export interface DropTarget {
  *   a leaf. On an EXPANDED row with visible children it is the FIRST CHILD instead (like
  *   `"inside"`, but the line is drawn right below the row, `slot = overIndex + 1`), so the
  *   indicator is always next to the pointer, even with a very long subtree. To drop after an
- *   expanded row's subtree, use the upper band of the next row or the lower band of its last row.
+ *   expanded row's subtree, use the upper band of the next row. Known limit: when the last
+ *   visible row is itself expanded (and so is its parent chain), nesting the node as the LAST
+ *   child of an ancestor is unreachable without collapsing that row first; the pointer below
+ *   the last row means "end of the whole tree" instead, see `getEndDropTarget`.
  *
  * Not valid (`null`): the dragged node itself or one of its descendants, an out-of-range row,
  * an unknown `activeId`, and, with `maxDepth`, a zone that would put the node (with its whole
@@ -277,6 +280,37 @@ export function getDropTarget<T>(
     projection: { depth, minDepth: depth, maxDepth: depth, parentId, clamped: false, zone },
     slot,
     isNoop,
+  };
+}
+
+/**
+ * Drop target for a pointer below the last row of `flattened`: the end of the whole tree, i.e.
+ * the last position among the roots (`parentId` null). Roots are depth 0, so `maxDepth` never
+ * refuses it. `null` for an unknown `activeId`. The indicator `slot` is `flattened.length`
+ * (a line below the last row).
+ */
+export function getEndDropTarget<T>(
+  flattened: readonly FlattenedNode<T>[],
+  activeId: TreeId,
+): DropTarget | null {
+  const active = flattened.find((n) => n.id === activeId);
+  if (!active) return null;
+  let index = 0;
+  let isLastRoot = false;
+  for (const item of flattened) {
+    if (item.depth !== 0) continue;
+    if (item.id === activeId) isLastRoot = true;
+    else {
+      index++;
+      isLastRoot = false;
+    }
+  }
+  return {
+    parentId: null,
+    index,
+    projection: { depth: 0, minDepth: 0, maxDepth: 0, parentId: null, clamped: false, zone: "after" },
+    slot: flattened.length,
+    isNoop: active.parentId === null && isLastRoot,
   };
 }
 

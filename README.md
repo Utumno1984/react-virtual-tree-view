@@ -291,9 +291,17 @@ the drop. The horizontal position is irrelevant (this also makes it work the sam
 | lower ~25% | next sibling of the row if it is collapsed or a leaf; **first child** of the row if it is expanded with visible children | a line right below the row (indented one level more when it is a first child) |
 
 The line is therefore always next to the pointer, even under an expanded row with hundreds of
-children. To drop a node after an expanded row's subtree, use the upper band of the next row or the
-lower band of the subtree's last row. With `maxDepth`, the first-child reading of an expanded row's
-lower band is refused (not demoted to a sibling) when it would exceed the limit.
+children. To drop a node after an expanded row's subtree, use the upper band of the next row. With
+`maxDepth`, the first-child reading of an expanded row's lower band is refused (not demoted to a
+sibling) when it would exceed the limit.
+
+A pointer **below the last row** of the list (the blank space under a short list, or the very bottom
+edge of the container when the list is scrolled to its end) means "the end of the whole tree": the
+last position among the roots.
+
+**Known limit:** when the last visible row is itself expanded, nesting a node as the *last* child of
+one of its ancestors is not reachable without first collapsing that row (the lower band of an
+expanded row is its first-child zone). There is no keyboard alternative for dragging yet.
 
 Not valid targets (no indicator, nothing happens on release): the dragged node itself, and with
 `maxDepth` a zone that would put the node or any descendant deeper than the limit (the "child" zone
@@ -493,6 +501,7 @@ Pure functions from `tree-utils`, exported for custom drag logic, tests and tree
 | `getDropZone(fraction)` | `"before"` / `"inside"` / `"after"` for a pointer at `fraction` (0 to 1) of the hovered row's height: 25% / 50% / 25%. |
 | `getProjection(flat, activeId, overId, zone, maxDepth?)` | Depth and parent a dragged node would get when dropped on `zone` of row `overId`. |
 | `getDropTarget(flat, activeId, overIndex, zone, maxDepth?, subtreeHeight?)` | Full drop target: parent, index, indicator row (`slot`), projection, `isNoop`. |
+| `getEndDropTarget(flat, activeId)` | Drop target for a pointer below the last row: the end of the whole tree (last root). |
 | `getSiblingDropTarget(flat, activeId, overIndex)` | Drop target for a same-parent reorder. |
 | `calculateNewParent(flat, overIndex, zone)` | Parent id of a node dropped on `zone` of row `overIndex`. |
 | `moveNode(tree, nodeId, toParentId, index)` | Immutable move; returns a `MoveResult` `{ tree, fromParentId, toParentId, index }`. For an invalid move `tree` is the same array you passed in. |

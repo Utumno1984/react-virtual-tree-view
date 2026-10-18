@@ -5,7 +5,9 @@ import {
   findDuplicateIds,
   flattenTree,
   getAncestorIds,
+  getDropTarget,
   getDropZone,
+  getEndDropTarget,
   getProjection,
   getSubtreeHeight,
   moveNode,
@@ -367,5 +369,33 @@ describe("integration and performance", () => {
     const elapsed = performance.now() - start;
     expect(flat).toHaveLength(5000);
     expect(elapsed).toBeLessThan(500);
+  });
+});
+
+describe("getEndDropTarget (pointer below the last row)", () => {
+  // X, P▾[C▾[c1, c2]]: the last visible row is c2, a grandchild of P
+  const tree = [n("X"), n("P", [n("C", [n("c1"), n("c2")])])];
+  const flat = flattenTree(tree, new Set(["P", "C"]));
+
+  it("makes X the last root, after P, when dropped below the last visible row", () => {
+    const target = getEndDropTarget(flat, "X")!;
+    expect(target.parentId).toBeNull();
+    expect(target.index).toBe(1);
+    expect(target.slot).toBe(flat.length);
+    expect(target.isNoop).toBe(false);
+    const moved = moveNode(tree, "X", target.parentId, target.index);
+    expect(moved.tree.map((x) => x.id)).toEqual(["P", "X"]);
+  });
+
+  it("the lower band of the last row alone stays inside its parent (needs the end target)", () => {
+    expect(getDropTarget(flat, "X", flat.length - 1, "after")?.parentId).toBe("C");
+  });
+
+  it("is a no-op for the last root; unknown ids give null", () => {
+    const rows = flattenTree([n("A"), n("B", [n("b")])], new Set(["B"]));
+    expect(getEndDropTarget(rows, "B")!.isNoop).toBe(true);
+    expect(getEndDropTarget(rows, "A")!.isNoop).toBe(false);
+    expect(getEndDropTarget(rows, "b")!.parentId).toBeNull();
+    expect(getEndDropTarget(rows, "missing")).toBeNull();
   });
 });

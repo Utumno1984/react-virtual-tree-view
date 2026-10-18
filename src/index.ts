@@ -26,6 +26,7 @@ export {
   findNodeById,
   getSiblingDropTarget,
   getDropTarget,
+  getEndDropTarget,
   getDropZone,
   DROP_ZONE_EDGE,
   getCheckStates,

@@ -33,6 +33,7 @@ import {
   getCheckStates,
   getDragPaddingRows,
   getDropTarget,
+  getEndDropTarget,
   getDropZone,
   toggleChecked,
   withoutDerived,
@@ -716,6 +717,13 @@ function TreeViewInner<T = unknown>(
       // Row under the pointer and where the pointer sits inside it (0 = top edge, 1 = bottom
       // edge): the vertical band picks "before" / "inside" / "after".
       const rowPosition = (y - top) / rowHeight;
+      // Below the last row: the end of the whole tree (last root).
+      if (rowPosition >= rows.length) {
+        return cache.get(activeId, rows.length, "after", () => {
+          flat ??= rows.map((row) => row.item);
+          return getEndDropTarget(flat, activeId);
+        });
+      }
       const overIndex = Math.min(rows.length - 1, Math.max(0, Math.floor(rowPosition)));
       const zone = getDropZone(rowPosition - overIndex);
       return cache.get(activeId, overIndex, zone, () => {

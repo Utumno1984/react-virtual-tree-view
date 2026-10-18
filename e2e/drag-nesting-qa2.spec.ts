@@ -22,13 +22,15 @@ test.describe("nesting QA round 2 (LargeTree)", () => {
     const before = await order(page);
     const id = before[1]!;
     const target = before[2]!;
+    // never undefined, even if the list is short: the last rendered row is a valid fallback
+    const afterTarget = before[3] ?? before[before.length - 1]!;
     for (let i = 0; i < 3; i++) {
       // middle of the third root: the second root becomes its (first) child
       await drag(page, id, target, "inside");
       await expect(node(page, id)).toHaveAttribute("aria-level", "2");
       // upper quarter of the root after the target (the target is open now): the id becomes a
       // root again, after the target's visible subtree
-      await drag(page, id, before[3]!, "before");
+      await drag(page, id, afterTarget, "before");
       await expect(node(page, id)).toHaveAttribute("aria-level", "1");
     }
     // the target stays expanded after the first nesting (by design); the moved node is a root again, now the 3rd of the roots

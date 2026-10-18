@@ -172,6 +172,29 @@ test.describe("dragging an expanded node", () => {
     await expect(node(page, "r30-c0-g0-x")).toBeAttached();
   });
 
+  test("pointer below the last visible row drops at the end of the roots (last root expanded)", async ({ page }) => {
+    await page.goto(url);
+    await expect(node(page, "r0")).toBeVisible();
+    await tree(page).evaluate((el) => (el.scrollTop = el.scrollHeight));
+    await expect(node(page, "r59-c5")).toBeVisible();
+    // r58 is the root just before the expanded last root r59
+    const start = await center(node(page, "r58"));
+    await dragToPoint(page, node(page, "r58"), { x: start.x, y: start.y + 8 });
+    // the very bottom edge of the container is below the last visible row
+    const bottom = await tree(page).evaluate((el) => el.getBoundingClientRect().bottom);
+    await page.mouse.move(start.x, bottom, { steps: 4 });
+    await expect(indicator(page)).toBeVisible();
+    await page.mouse.up();
+    await expect(log(page)).toContainText('"nodeId":"r58","fromParentId":null,"toParentId":null');
+    const ids = await order(page);
+    expect(ids[ids.length - 1]).toBe("r58");
+    await expect(node(page, "r58")).toHaveAttribute("aria-level", "1");
+    await expect(node(page, "r58")).toHaveAttribute("aria-posinset", "60");
+    // r59 stays expanded with its children, now before r58
+    await expect(node(page, "r59")).toHaveAttribute("aria-expanded", "true");
+    expect(ids.indexOf("r59-c5")).toBe(ids.indexOf("r58") - 1);
+  });
+
   test("a non-expanded node still drags as before", async ({ page }) => {
     await page.goto(url);
     await reveal(page, 30, "r30");
