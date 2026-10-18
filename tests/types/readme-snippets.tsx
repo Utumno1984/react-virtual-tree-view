@@ -19,7 +19,13 @@ import {
   getSubtreeHeight,
   moveNode,
 } from "../../src";
-import type { MenuItem, TreeChangeEvent, TreeNode, TreeViewHandle } from "../../src";
+import type {
+  MenuItem,
+  TreeChangeEvent,
+  TreeNode,
+  TreeViewHandle,
+  TreeViewPersistableState,
+} from "../../src";
 
 // --- Minimal TreeView -------------------------------------------------------------------
 
@@ -95,6 +101,31 @@ export function SearchableTree({ query }: { query: string }) {
 
 export function UncontrolledSelection() {
   return <TreeView data={files} defaultSelectedId="cv" aria-label="Files" />;
+}
+
+// --- Persisting the tree state ----------------------------------------------------------
+
+export function PersistedTree() {
+  // Read the saved state once; null the first time.
+  const [saved] = useState<TreeViewPersistableState | null>(() => {
+    const raw = localStorage.getItem("files-tree");
+    return raw ? JSON.parse(raw) : null;
+  });
+  // The search field is yours: start it from the saved value too.
+  const [query, setQuery] = useState(saved?.searchQuery ?? "");
+
+  return (
+    <>
+      <input value={query} onChange={(event) => setQuery(event.target.value)} />
+      <TreeView
+        data={files}
+        searchQuery={query}
+        initialState={saved ?? undefined}
+        onStateChange={(state) => localStorage.setItem("files-tree", JSON.stringify(state))}
+        aria-label="Files"
+      />
+    </>
+  );
 }
 
 // --- Edge cases: empty tree, disabled node, maxDepth ------------------------------------
