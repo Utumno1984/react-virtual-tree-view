@@ -58,6 +58,26 @@ export function flattenTree<T = unknown>(
   return out;
 }
 
+/**
+ * Number of rows `node` contributes below itself in the flattened list: its descendants that
+ * are visible given `expandedIds` (the children of a collapsed node are not counted). O(subtree).
+ */
+export function countVisibleDescendants<T>(
+  node: TreeNode<T>,
+  expandedIds: ReadonlySet<TreeId>,
+): number {
+  let count = 0;
+  const stack: TreeNode<T>[] = [node];
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    const children = current.children;
+    if (!children || children.length === 0 || !expandedIds.has(current.id)) continue;
+    count += children.length;
+    for (const child of children) stack.push(child);
+  }
+  return count;
+}
+
 /** Height of the subtree rooted at `node`: a leaf is 0. */
 export function getSubtreeHeight<T>(node: TreeNode<T>): number {
   let max = 0;

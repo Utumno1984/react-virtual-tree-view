@@ -27,6 +27,7 @@ import type { TermMatch } from "./search";
 import { normalizePersistableState, sameIdSet } from "./persistable-state";
 import {
   collectIds,
+  countVisibleDescendants,
   findFirstNode,
   findDuplicateIds,
   flattenTree,
@@ -421,8 +422,17 @@ function TreeViewInner<T = unknown>(
     [rows],
   );
 
+  // Hiding the dragged node's descendants must not shrink the scrollable height: the browser
+  // would clamp `scrollTop`, and dnd-kit counts that scroll as drag movement, detaching the
+  // overlay from the pointer. The rows that were hidden keep their (blank) space meanwhile.
+  const hiddenRows = useMemo(() => {
+    if (activeDragId === null || layoutExpanded === effectiveExpanded) return 0;
+    const dragged = findFirstNode(data, activeDragId);
+    return dragged ? countVisibleDescendants(dragged, effectiveExpanded) : 0;
+  }, [data, activeDragId, layoutExpanded, effectiveExpanded]);
+
   const { start, end, viewport, totalHeight, onScroll, scrollToIndex } = useVirtualRows({
-    count: rows.length,
+    count: rows.length + hiddenRows,
     rowHeight,
     overscan,
     height,
@@ -642,7 +652,7 @@ function TreeViewInner<T = unknown>(
   const keepTarget = focusedIndex >= 0 && (anchored || hasFocus);
   const tabbableIndex = focusedInWindow || keepTarget ? focusedIndex : start;
   const renderedIndexes: number[] = [];
-  for (let i = start; i < end; i++) renderedIndexes.push(i);
+  for (let i = start; i < Math.min(end, rows.length); i++) renderedIndexes.push(i);
   if (keepTarget && !focusedInWindow) renderedIndexes.push(focusedIndex);
   // The dragged row stays mounted when scrolled out of the window: unmounting it would
   // unregister the draggable in the middle of the drag.
