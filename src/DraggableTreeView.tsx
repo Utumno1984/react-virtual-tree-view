@@ -96,17 +96,32 @@ function DraggableTreeViewInner<T = unknown>(
   const dataRef = useRef(data);
   dataRef.current = data;
   useEffect(() => {
-    if (!isDevelopment()) return;
-    if (!maxDepthValid) {
-      console.warn(
-        `[react-virtual-tree-view] Invalid maxDepth: it must be a non-negative integer, got ${String(maxDepthProp)}. No depth limit is applied.`,
-      );
-    } else if (maxDepth !== undefined && getTreeHeight(dataRef.current) > maxDepth) {
-      console.warn(
-        `[react-virtual-tree-view] data already exceeds maxDepth (${maxDepth}). It is shown as is; the limit only applies to new drops.`,
-      );
+    if (!isDevelopment() || maxDepthValid) return;
+    console.warn(
+      `[react-virtual-tree-view] Invalid maxDepth: it must be a non-negative integer, got ${String(maxDepthProp)}. No depth limit is applied.`,
+    );
+  }, [maxDepthValid, maxDepthProp]);
+
+  // Development only: whether `data` is deeper than the limit. Recomputed only when `data` or
+  // `maxDepth` change (never in production, never on unrelated renders).
+  const exceedsMaxDepth = useMemo(
+    () => isDevelopment() && maxDepth !== undefined && getTreeHeight(data) > maxDepth,
+    [data, maxDepth],
+  );
+  // Last maxDepth warned about. Refs survive StrictMode's simulated remount, so the same
+  // situation is reported once; it re-arms when `data` returns within the limit.
+  const warnedExceeds = useRef<number | null>(null);
+  useEffect(() => {
+    if (!exceedsMaxDepth || maxDepth === undefined) {
+      warnedExceeds.current = null;
+      return;
     }
-  }, [maxDepthValid, maxDepthProp, maxDepth]);
+    if (warnedExceeds.current === maxDepth) return;
+    warnedExceeds.current = maxDepth;
+    console.warn(
+      `[react-virtual-tree-view] data already exceeds maxDepth (${maxDepth}). It is shown as is; the limit only applies to new drops.`,
+    );
+  }, [exceedsMaxDepth, maxDepth]);
 
   const onDragStart = useCallback(
     ({ active, activatorEvent }: DragStartEvent) => {
