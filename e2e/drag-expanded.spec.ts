@@ -241,4 +241,36 @@ test.describe("end of the tree with a bare container (no padding, no border)", (
     expect(ids[ids.length - 1]).toBe("r58");
     await expect(node(page, "r58")).toHaveAttribute("aria-posinset", "60");
   });
+
+  test("dropping at the end of a scrolled list does not jump the content", async ({ page }) => {
+    await page.goto(bareUrl);
+    await expect(node(page, "r0")).toBeVisible();
+    await tree(page).evaluate((el) => (el.scrollTop = el.scrollHeight));
+    await expect(node(page, "r59-c5")).toBeVisible();
+    const start = await center(node(page, "r58"));
+    await dragToPoint(page, node(page, "r58"), { x: start.x, y: start.y + 8 });
+    const treeBox = (await tree(page).boundingBox())!;
+    await page.mouse.move(start.x, treeBox.y + treeBox.height - 6, { steps: 4 });
+    await expect(indicator(page)).toBeVisible();
+    // let the scroll position (including any auto-scroll) settle
+    let last = -1;
+    await expect
+      .poll(async () => {
+        const top = await tree(page).evaluate((el) => el.scrollTop);
+        const settled = top === last;
+        last = top;
+        return settled;
+      }, { intervals: [300] })
+      .toBe(true);
+    const scrollBefore = await tree(page).evaluate((el) => el.scrollTop);
+    const lastBefore = (await node(page, "r59-c5").boundingBox())!;
+    await page.mouse.up();
+    await expect(log(page)).toContainText('"nodeId":"r58"');
+    await expect(node(page, "r58")).toHaveAttribute("aria-posinset", "60");
+    await page.waitForTimeout(300);
+    expect(await tree(page).evaluate((el) => el.scrollTop)).toBe(scrollBefore);
+    const lastAfter = (await node(page, "r59-c5").boundingBox())!;
+    // r58 left the place above r59: the rows below move up by exactly one row, nothing more
+    expect(Math.abs(lastAfter.y - (lastBefore.y - lastBefore.height))).toBeLessThan(1);
+  });
 });

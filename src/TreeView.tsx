@@ -452,12 +452,35 @@ function TreeViewInner<T = unknown>(
   // tree" zone (the pointer below the last row) at least a row tall, whatever padding/border the
   // container has. Not added to a container that grows with its content (it would shift the
   // layout under the pointer) nor to a short list, which already has blank space below.
-  const endRow =
+  const dragEndRow =
     activeDragId !== null &&
     (rows.length + hiddenRows) * rowHeight > (height ?? dragScroll.view) - (height === undefined ? 0 : rowHeight)
       ? 1
       : 0;
-  const { start, end, viewport, totalHeight, onScroll, scrollToIndex } = useVirtualRows({
+  // When the drag ends the row must not vanish while the scroll position still needs it:
+  // the browser would clamp `scrollTop` and the content would jump under the pointer. It is
+  // kept until the list is scrolled back to where it is no longer needed. The DOM is read
+  // before the commit, so `scrollTop` is still the one of the drag.
+  const [keepEndRow, setKeepEndRow] = useState(false);
+  const hadEndRow = useRef(0);
+  if (hadEndRow.current === 1 && dragEndRow === 0 && !keepEndRow) {
+    const el = containerRef.current;
+    if (el && el.scrollTop + el.clientHeight > rows.length * rowHeight) setKeepEndRow(true);
+  }
+  const endRow = dragEndRow === 1 || keepEndRow ? 1 : 0;
+  useEffect(() => {
+    hadEndRow.current = dragEndRow;
+  }, [dragEndRow]);
+  const releaseEndRow = () => {
+    const el = containerRef.current;
+    if (el && el.scrollTop + el.clientHeight <= rows.length * rowHeight) setKeepEndRow(false);
+  };
+  useEffect(() => {
+    if (!keepEndRow) return;
+    if (activeDragId !== null) setKeepEndRow(false);
+    else releaseEndRow();
+  }, [keepEndRow, activeDragId, rows.length, rowHeight]);
+  const { start, end, viewport, totalHeight, onScroll: onVirtualScroll, scrollToIndex } = useVirtualRows({
     count: rows.length + hiddenRows + endRow,
     rowHeight,
     overscan,
@@ -894,7 +917,10 @@ function TreeViewInner<T = unknown>(
         aria-label={ariaLabel}
         aria-labelledby={ariaLabelledBy}
         aria-multiselectable={checkable ? true : undefined}
-        onScroll={onScroll}
+        onScroll={(event) => {
+          onVirtualScroll(event);
+          if (keepEndRow) releaseEndRow();
+        }}
         onFocus={keyboard.onTreeFocus}
         onBlur={keyboard.onTreeBlur}
         // `height` is set only when the prop is given, so the consumer's CSS can size the
