@@ -147,7 +147,11 @@ export function useTreeKeyboard({
   const onTreeFocus = () => setHasFocus(true);
   const onTreeBlur = (event: { relatedTarget: EventTarget | null }) => {
     const container = containerRef.current;
-    if (container && event.relatedTarget instanceof Node && container.contains(event.relatedTarget)) {
+    if (
+      container &&
+      event.relatedTarget instanceof Node &&
+      container.contains(event.relatedTarget)
+    ) {
       return;
     }
     setHasFocus(false);

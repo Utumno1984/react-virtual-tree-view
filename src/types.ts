@@ -209,8 +209,10 @@ export interface MenuAnchor {
 }
 
 /** Props of the standalone `TreeContextMenu` component (`TreeView` renders it for you). */
-export interface TreeContextMenuProps<T = unknown>
-  extends Omit<TreeContextMenuOptions<T>, "items"> {
+export interface TreeContextMenuProps<T = unknown> extends Omit<
+  TreeContextMenuOptions<T>,
+  "items"
+> {
   /** The node the menu was opened on; handed to `onSelect`. */
   node: TreeNode<T>;
   items: MenuItem<T>[];

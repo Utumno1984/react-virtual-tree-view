@@ -16,12 +16,7 @@ import type {
   ReactNode,
 } from "react";
 import { collectMatches, getMatchRanges, normalizeQuery } from "./search";
-import {
-  collectIds,
-  findDuplicateIds,
-  flattenTree,
-  getDropTarget,
-} from "./tree-utils";
+import { collectIds, findDuplicateIds, flattenTree, getDropTarget } from "./tree-utils";
 import type { DropTarget, FlattenedNode, TreeId } from "./tree-utils";
 import type { TreeDndAdapter } from "./dnd-internal";
 import { createProjectionCache } from "./projection-cache";
@@ -93,16 +88,12 @@ function TreeViewInner<T = unknown>(
   const contentRef = useRef<HTMLDivElement>(null);
   // A non-positive or non-finite rowHeight would stack every row at top:0.
   const rowHeight =
-    Number.isFinite(rowHeightProp) && rowHeightProp > 0
-      ? rowHeightProp
-      : DEFAULT_ROW_HEIGHT;
-  const [expanded, setExpanded] = useState<ReadonlySet<TreeId>>(
-    () => new Set(defaultExpandedIds),
-  );
+    Number.isFinite(rowHeightProp) && rowHeightProp > 0 ? rowHeightProp : DEFAULT_ROW_HEIGHT;
+  const [expanded, setExpanded] = useState<ReadonlySet<TreeId>>(() => new Set(defaultExpandedIds));
 
-  const [uncontrolledSelectedState, setUncontrolledSelectedId] = useState<
-    TreeId | undefined
-  >(defaultSelectedId);
+  const [uncontrolledSelectedState, setUncontrolledSelectedId] = useState<TreeId | undefined>(
+    defaultSelectedId,
+  );
 
   // Every id of the whole new tree (not just the visible rows): one O(n) pass per `data`.
   const allIds = useMemo(() => collectIds(data), [data]);
@@ -121,10 +112,7 @@ function TreeViewInner<T = unknown>(
   let expandedNow = expanded;
   if (reconciledData !== data) {
     setReconciledData(data);
-    if (
-      uncontrolledSelectedId !== undefined &&
-      !allIds.has(uncontrolledSelectedId)
-    ) {
+    if (uncontrolledSelectedId !== undefined && !allIds.has(uncontrolledSelectedId)) {
       uncontrolledSelectedId = undefined;
       setUncontrolledSelectedId(undefined);
     }
@@ -147,31 +135,24 @@ function TreeViewInner<T = unknown>(
         keptToggles ??= new Set(searchToggles.toggled);
         keptToggles.delete(id);
       }
-      if (keptToggles)
-        setSearchToggles({ query: searchToggles.query, toggled: keptToggles });
+      if (keptToggles) setSearchToggles({ query: searchToggles.query, toggled: keptToggles });
     }
   }
   // `selectedId={undefined}` means uncontrolled; `null` is a controlled "nothing selected".
-  const currentSelectedId =
-    selectedId !== undefined ? selectedId : uncontrolledSelectedId;
+  const currentSelectedId = selectedId !== undefined ? selectedId : uncontrolledSelectedId;
 
   // One O(n) pass per (data, normalized query): matches, their ancestors and the ids to
   // expand. Keyed on the trimmed query so "foo" -> "foo " does not redo the pass.
   const normalizedQuery = normalizeQuery(searchQuery);
-  const search = useMemo(
-    () => collectMatches(data, normalizedQuery),
-    [data, normalizedQuery],
-  );
+  const search = useMemo(() => collectMatches(data, normalizedQuery), [data, normalizedQuery]);
   // While searching, the user's own expand/collapse is stored as the set of ids they toggled
   // (relative to the auto-expanded ones), tied to the normalized query: it survives a new
   // `data` reference, is dropped when the query really changes, and `expanded` is left
   // untouched, so clearing the query restores it exactly.
-  if (searchToggles && searchToggles.query !== normalizedQuery)
-    setSearchToggles(null);
+  if (searchToggles && searchToggles.query !== normalizedQuery) setSearchToggles(null);
   const effectiveExpanded = useMemo<ReadonlySet<TreeId>>(() => {
     if (!search) return expandedNow;
-    if (!searchToggles || searchToggles.query !== search.query)
-      return search.expandedIds;
+    if (!searchToggles || searchToggles.query !== search.query) return search.expandedIds;
     const next = new Set(search.expandedIds);
     for (const id of searchToggles.toggled) {
       if (!next.delete(id)) next.add(id);
@@ -182,8 +163,7 @@ function TreeViewInner<T = unknown>(
   // While a node is dragged its descendants are hidden: lay out as if it were collapsed.
   const activeDragId = dnd?.activeId ?? null;
   const layoutExpanded = useMemo<ReadonlySet<TreeId>>(() => {
-    if (activeDragId === null || !effectiveExpanded.has(activeDragId))
-      return effectiveExpanded;
+    if (activeDragId === null || !effectiveExpanded.has(activeDragId)) return effectiveExpanded;
     const next = new Set(effectiveExpanded);
     next.delete(activeDragId);
     return next;
@@ -221,8 +201,7 @@ function TreeViewInner<T = unknown>(
         isExpanded: item.hasChildren && layoutExpanded.has(item.id),
       };
     });
-    for (const row of built)
-      row.setSize = childCounts.get(row.parentIndex) ?? 1;
+    for (const row of built) row.setSize = childCounts.get(row.parentIndex) ?? 1;
     return built;
   }, [data, layoutExpanded, search]);
 
@@ -250,14 +229,13 @@ function TreeViewInner<T = unknown>(
     [rows],
   );
 
-  const { start, end, viewport, totalHeight, onScroll, scrollToIndex } =
-    useVirtualRows({
-      count: rows.length,
-      rowHeight,
-      overscan,
-      height,
-      containerRef,
-    });
+  const { start, end, viewport, totalHeight, onScroll, scrollToIndex } = useVirtualRows({
+    count: rows.length,
+    rowHeight,
+    overscan,
+    height,
+    containerRef,
+  });
 
   useImperativeHandle(
     ref,
@@ -283,11 +261,7 @@ function TreeViewInner<T = unknown>(
     // Without `height` the container must be sized by the consumer's CSS; if it just
     // grows to fit all rows, nothing is virtualized.
     if (!isDevelopment() || warnedNoHeight.current) return;
-    if (
-      height === undefined &&
-      rows.length > 200 &&
-      viewport >= rows.length * rowHeight
-    ) {
+    if (height === undefined && rows.length > 200 && viewport >= rows.length * rowHeight) {
       warnedNoHeight.current = true;
       console.warn(
         "[react-virtual-tree-view] The tree is as tall as all its rows, so rows are not " +
@@ -300,16 +274,11 @@ function TreeViewInner<T = unknown>(
   // it, it only warns (development), once per missing id.
   const warnedMissingSelected = useRef<TreeId | null>(null);
   useEffect(() => {
-    if (
-      selectedId === undefined ||
-      selectedId === null ||
-      allIds.has(selectedId)
-    ) {
+    if (selectedId === undefined || selectedId === null || allIds.has(selectedId)) {
       warnedMissingSelected.current = null;
       return;
     }
-    if (!isDevelopment() || warnedMissingSelected.current === selectedId)
-      return;
+    if (!isDevelopment() || warnedMissingSelected.current === selectedId) return;
     warnedMissingSelected.current = selectedId;
     console.warn(
       `[react-virtual-tree-view] The controlled selectedId "${String(selectedId)}" does not exist in \`data\`. ` +
@@ -339,9 +308,7 @@ function TreeViewInner<T = unknown>(
     (id: TreeId) => {
       if (search) {
         setSearchToggles((prev) => {
-          const toggled = new Set(
-            prev && prev.query === search.query ? prev.toggled : [],
-          );
+          const toggled = new Set(prev && prev.query === search.query ? prev.toggled : []);
           if (!toggled.delete(id)) toggled.add(id);
           return { query: search.query, toggled };
         });
@@ -406,9 +373,7 @@ function TreeViewInner<T = unknown>(
     const row = current.rowEl.isConnected
       ? current.rowEl
       : rows[current.rowIndex]?.item.node === current.node
-        ? containerRef.current?.querySelector<HTMLElement>(
-            `[data-row-index="${current.rowIndex}"]`,
-          )
+        ? containerRef.current?.querySelector<HTMLElement>(`[data-row-index="${current.rowIndex}"]`)
         : null;
     row?.focus({ preventScroll: true });
   };
@@ -443,10 +408,8 @@ function TreeViewInner<T = unknown>(
   if (keepTarget && !focusedInWindow) renderedIndexes.push(focusedIndex);
   // The dragged row stays mounted when scrolled out of the window: unmounting it would
   // unregister the draggable in the middle of the drag.
-  const activeIndex =
-    activeDragId === null ? -1 : (firstIndexById.get(activeDragId) ?? -1);
-  if (activeIndex >= 0 && !renderedIndexes.includes(activeIndex))
-    renderedIndexes.push(activeIndex);
+  const activeIndex = activeDragId === null ? -1 : (firstIndexById.get(activeDragId) ?? -1);
+  if (activeIndex >= 0 && !renderedIndexes.includes(activeIndex)) renderedIndexes.push(activeIndex);
 
   // Drop resolution happens once, on release (not on every pointermove): pointer position
   // -> row under it (fixed row height) -> same-parent target.
@@ -466,37 +429,24 @@ function TreeViewInner<T = unknown>(
       const content = contentRef.current;
       if (search || !el || !content || rows.length === 0) return null;
       const rect = geometry ? geometry.rect : el.getBoundingClientRect();
-      if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom)
-        return null;
+      if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) return null;
       // Rows are positioned inside the content element, which already moves with the
       // scroll and ignores the container's padding/border.
       let top: number;
       if (geometry) {
         if (measuredRect !== rect) {
           measuredRect = rect;
-          contentOffset =
-            content.getBoundingClientRect().top - rect.top + el.scrollTop;
+          contentOffset = content.getBoundingClientRect().top - rect.top + el.scrollTop;
         }
         top = rect.top + contentOffset - geometry.scrollTop;
       } else {
         top = content.getBoundingClientRect().top;
       }
-      const overIndex = Math.min(
-        rows.length - 1,
-        Math.max(0, Math.floor((y - top) / rowHeight)),
-      );
+      const overIndex = Math.min(rows.length - 1, Math.max(0, Math.floor((y - top) / rowHeight)));
       const steps = Math.round(dx / indentation);
       return cache.get(activeId, overIndex, steps, () => {
         flat ??= rows.map((row) => row.item);
-        return getDropTarget(
-          flat,
-          activeId,
-          overIndex,
-          dx,
-          indentation,
-          maxDepth,
-          subtreeHeight,
-        );
+        return getDropTarget(flat, activeId, overIndex, dx, indentation, maxDepth, subtreeHeight);
       });
     };
     return () => {
@@ -528,11 +478,7 @@ function TreeViewInner<T = unknown>(
     };
   }, [expandRef, effectiveExpanded, onExpandedChange]);
 
-  const renderBody = (
-    index: number,
-    state: RenderNodeState,
-    interactive: boolean,
-  ) => {
+  const renderBody = (index: number, state: RenderNodeState, interactive: boolean) => {
     const { item } = rows[index]!;
     const { node, hasChildren } = item;
     return (
@@ -555,17 +501,9 @@ function TreeViewInner<T = unknown>(
             cursor: hasChildren ? "pointer" : undefined,
           }}
         >
-          {hasChildren
-            ? renderIcon
-              ? renderIcon(state)
-              : state.isExpanded
-                ? "▾"
-                : "▸"
-            : null}
+          {hasChildren ? (renderIcon ? renderIcon(state) : state.isExpanded ? "▾" : "▸") : null}
         </span>
-        {renderNode
-          ? renderNode(node, state)
-          : highlight(node.label, state.matchRanges)}
+        {renderNode ? renderNode(node, state) : highlight(node.label, state.matchRanges)}
       </>
     );
   };
@@ -583,8 +521,7 @@ function TreeViewInner<T = unknown>(
       isFocused: hasFocus && index === focusedIndex,
       isSearching: !!search,
       isMatch,
-      matchRanges:
-        isMatch && search ? getMatchRanges(node.label, search.query) : [],
+      matchRanges: isMatch && search ? getMatchRanges(node.label, search.query) : [],
     };
   };
   const classFor = (state: RenderNodeState) =>
@@ -628,16 +565,10 @@ function TreeViewInner<T = unknown>(
         // `height` is set only when the prop is given, so the consumer's CSS can size the
         // tree; an empty tree gets no height/overflow so `emptyState` sits right below it.
         style={
-          rows.length === 0
-            ? undefined
-            : { overflow: "auto", height, boxSizing: "border-box" }
+          rows.length === 0 ? undefined : { overflow: "auto", height, boxSizing: "border-box" }
         }
       >
-        <div
-          ref={contentRef}
-          role="none"
-          style={{ position: "relative", height: totalHeight }}
-        >
+        <div ref={contentRef} role="none" style={{ position: "relative", height: totalHeight }}>
           {renderedIndexes.map((index) => {
             const { item, key, setSize, posInSet } = rows[index]!;
             const { node, depth, hasChildren } = item;
@@ -652,10 +583,7 @@ function TreeViewInner<T = unknown>(
                 if (
                   contextMenu &&
                   event.target === event.currentTarget &&
-                  ((event.key === "F10" &&
-                    event.shiftKey &&
-                    !event.ctrlKey &&
-                    !event.altKey) ||
+                  ((event.key === "F10" && event.shiftKey && !event.ctrlKey && !event.altKey) ||
                     event.key === "ContextMenu")
                 ) {
                   const rect = event.currentTarget.getBoundingClientRect();
@@ -691,8 +619,7 @@ function TreeViewInner<T = unknown>(
                     if (opened) event.preventDefault();
                   }
                 : undefined,
-              onFocus: (event: FocusEvent<HTMLDivElement>) =>
-                keyboard.onRowFocus(event, index),
+              onFocus: (event: FocusEvent<HTMLDivElement>) => keyboard.onRowFocus(event, index),
               onClick: () => select(index),
               "data-disabled": state.isDisabled ? "" : undefined,
               "aria-level": depth + 1,
