@@ -8,7 +8,8 @@ function big(): TreeNode[] {
     const kids: TreeNode[] = [];
     for (let c = 0; c < 50; c++) {
       const leaves: TreeNode[] = [];
-      for (let l = 0; l < 10; l++) leaves.push({ id: `r${r}c${c}l${l}`, label: "x" });
+      for (let l = 0; l < 10; l++)
+        leaves.push({ id: `r${r}c${c}l${l}`, label: "x" });
       kids.push({ id: `r${r}c${c}`, label: "x", children: leaves });
     }
     roots.push({ id: `r${r}`, label: "x", children: kids });
