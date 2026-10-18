@@ -28,6 +28,22 @@ export interface RenderNodeState {
 }
 
 export interface TreeViewProps<T = unknown> {
+  /**
+   * The tree. It can be replaced at runtime (new dataset, same mounted component). The ids
+   * kept in the component's internal state are then reconciled against the whole new tree
+   * (not only the visible rows), in one O(n) pass:
+   *
+   * - uncontrolled selection (`defaultSelectedId` / internal state): reset if its id is not in
+   *   the new tree; kept if it is (even with a different label or content: the id is the
+   *   node's identity) and also when it is only hidden (closed branch, search filter);
+   * - expanded nodes and the keyboard-focused node whose id disappeared are dropped silently,
+   *   without calling `onExpandedChange`;
+   * - a controlled `selectedId` is never touched (see `selectedId`).
+   *
+   * There is no callback for these resets (`onSelect` is never called with `null`): whoever
+   * swaps `data` must also reset the rest of its own state tied to the old nodes, e.g. close
+   * a dialog opened on a node.
+   */
   data: TreeNode<T>[];
   /** Ids of the nodes that start expanded (read on mount only). */
   defaultExpandedIds?: ReadonlyArray<TreeNode["id"]>;
@@ -36,9 +52,17 @@ export interface TreeViewProps<T = unknown> {
   /**
    * Controlled selection. When defined the selection only changes when the parent updates
    * it (`null` = nothing selected); `onSelect` is still called on every user selection.
+   *
+   * If it points to an id that is not in `data` (e.g. after `data` is replaced) the library
+   * changes nothing: the parent owns the state and must update it together with `data`. In
+   * development a `console.warn` names the missing id (once per id, nothing in production).
    */
   selectedId?: TreeNode["id"] | null;
-  /** Initially selected id for the uncontrolled mode (read on mount only). */
+  /**
+   * Initially selected id for the uncontrolled mode (read on mount only). When `data` is
+   * later replaced, the internal selection is reset if its id is not in the new tree and kept
+   * if it is (see `data`); no callback is fired for the reset.
+   */
   defaultSelectedId?: TreeNode["id"];
   /** Called when the user selects an enabled node (click, Enter or Space). */
   onSelect?: (id: TreeNode["id"], node: TreeNode<T>) => void;
@@ -185,8 +209,10 @@ export interface MenuAnchor {
 }
 
 /** Props of the standalone `TreeContextMenu` component (`TreeView` renders it for you). */
-export interface TreeContextMenuProps<T = unknown>
-  extends Omit<TreeContextMenuOptions<T>, "items"> {
+export interface TreeContextMenuProps<T = unknown> extends Omit<
+  TreeContextMenuOptions<T>,
+  "items"
+> {
   /** The node the menu was opened on; handed to `onSelect`. */
   node: TreeNode<T>;
   items: MenuItem<T>[];

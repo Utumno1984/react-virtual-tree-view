@@ -1,9 +1,16 @@
 import type { TreeNode } from "../../src/types";
 import { generateTree } from "./generateTree";
 
-export type DatasetName = "small" | "large" | "deep" | "empty" | "single";
+export type DatasetName = "small" | "large" | "deep" | "empty" | "single" | "variant";
 
-export const DATASET_NAMES: DatasetName[] = ["small", "large", "deep", "empty", "single"];
+export const DATASET_NAMES: DatasetName[] = [
+  "small",
+  "large",
+  "deep",
+  "empty",
+  "single",
+  "variant",
+];
 
 /** Depth of the `deep` preset (roots are 0): every chain goes down to this level. */
 export const DEEP_LEVELS = 6;
@@ -49,6 +56,35 @@ function smallTree(): TreeNode[] {
   ];
 }
 
+/**
+ * Same ids as `small` (`a-`), different content: renamed labels, some nodes gone (`a-q2`,
+ * `a-notes`, `a-music`...) and a new root. Ids kept here keep their selection/expansion;
+ * ids missing here lose them.
+ */
+function variantTree(): TreeNode[] {
+  return [
+    {
+      id: "a-docs",
+      label: "Documents (v2)",
+      children: [
+        { id: "a-cv", label: "CV (updated).pdf" },
+        {
+          id: "a-reports",
+          label: "Reports (v2)",
+          children: [{ id: "a-q1", label: "Q1 (revised).xlsx" }],
+        },
+      ],
+    },
+    {
+      id: "a-pics",
+      label: "Pictures (v2)",
+      children: [{ id: "a-logo", label: "Logo (new).svg" }],
+    },
+    { id: "a-readme", label: "README (v2).md" },
+    { id: "a-new", label: "Brand new node" },
+  ];
+}
+
 /** Narrow and deep: 3 roots, each a chain down to level `DEEP_LEVELS`, with a leaf per level. */
 function deepTree(): TreeNode[] {
   return [0, 1, 2].map((r) => {
@@ -84,6 +120,8 @@ export function createDataset(name: DatasetName): TreeNode[] {
       return deepTree();
     case "single":
       return [{ id: "d-solo", label: "Only node" }];
+    case "variant":
+      return variantTree();
     case "empty":
       return [];
   }

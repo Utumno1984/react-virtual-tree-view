@@ -5,8 +5,8 @@ import { center, collectConsole, dragToPoint, node, order, storyUrl } from "./he
 const treeStory = storyUrl("treeview-dataswap--default");
 const dragStory = storyUrl("draggabletreeview-dataswap--default");
 
-// `defaultExpandedIds` is read on mount only, but ids that coincide with the new tree stay
-// expanded: "a-docs" was expanded at mount, so it is open every time `small` comes back.
+// `defaultExpandedIds` is read on mount only: "a-docs" is open at first load (these are the
+// rows of `small` at that moment).
 const SMALL_ROWS = [
   "a-docs",
   "a-cv",
@@ -19,6 +19,12 @@ const SMALL_ROWS = [
   "a-locked",
   "a-tmp",
 ];
+
+// After a swap to a tree without `a-docs`, the library forgets its expansion (#44): coming back
+// to `small` shows the same rows with `a-docs` collapsed.
+const SMALL_ROWS_AFTER_SWAP = SMALL_ROWS.filter(
+  (id) => !["a-cv", "a-reports", "a-notes"].includes(id),
+);
 
 const pick = (page: Page, name: string) => page.getByTestId(`dataset-${name}`).click();
 const tree = (page: Page) => page.getByRole("tree");
@@ -62,9 +68,9 @@ test.describe("TreeView/DataSwap", () => {
     await expect(node(page, "b-0")).toHaveCount(0);
     await pick(page, "small");
     await expect.poll(() => tree(page).evaluate((el) => el.scrollTop)).toBe(0);
-    expect(await ids(page)).toEqual(SMALL_ROWS);
+    expect(await ids(page)).toEqual(SMALL_ROWS_AFTER_SWAP);
     await expect(node(page, "a-docs")).toHaveCSS("top", "0px");
-    expect(await contentHeight(page)).toBe(SMALL_ROWS.length * 32);
+    expect(await contentHeight(page)).toBe(SMALL_ROWS_AFTER_SWAP.length * 32);
     const treeBox = await tree(page).boundingBox();
     const firstBox = await node(page, "a-docs").boundingBox();
     expect(firstBox!.y).toBeGreaterThanOrEqual(treeBox!.y);
@@ -246,7 +252,9 @@ test.describe("DraggableTreeView/DataSwap", () => {
       '"nodeId":"a-todo","fromParentId":null,"toParentId":null,"index":3',
     );
     expect(await ids(page)).toEqual(
-      SMALL_ROWS.map((id) => (id === "a-readme" ? "a-todo" : id === "a-todo" ? "a-readme" : id)),
+      SMALL_ROWS_AFTER_SWAP.map((id) =>
+        id === "a-readme" ? "a-todo" : id === "a-todo" ? "a-readme" : id,
+      ),
     );
     let flat = (await page.getByTestId("last-tree-ids").getAttribute("data-ids"))!.split(",");
     expect(flat.every((id) => id.startsWith("a-"))).toBe(true);
@@ -285,7 +293,7 @@ test.describe("DraggableTreeView/DataSwap", () => {
     await pick(page, "large");
     await expect(node(page, "b-0")).toBeVisible();
     await pick(page, "small");
-    expect(await ids(page)).toEqual(SMALL_ROWS);
+    expect(await ids(page)).toEqual(SMALL_ROWS_AFTER_SWAP);
     await dragToPoint(page, node(page, "a-todo"), {
       x: (await center(node(page, "a-pics"))).x,
       y: (await center(node(page, "a-pics"))).y - 12,

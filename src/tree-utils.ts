@@ -378,6 +378,19 @@ export function findDuplicateIds<T>(tree: TreeNode<T>[]): TreeId[] {
   return [...dups];
 }
 
+/** Every id in the whole tree (not only the visible rows), in one O(n) pass. Internal. */
+export function collectIds<T>(tree: TreeNode<T>[]): Set<TreeId> {
+  const ids = new Set<TreeId>();
+  const stack: TreeNode<T>[][] = [tree];
+  while (stack.length > 0) {
+    for (const n of stack.pop()!) {
+      ids.add(n.id);
+      if (n.children && n.children.length > 0) stack.push(n.children);
+    }
+  }
+  return ids;
+}
+
 /** Ancestor ids from the root down to the parent. Empty for roots / unknown ids. */
 export function getAncestorIds<T>(tree: TreeNode<T>[], id: TreeId): TreeId[] {
   const path: TreeId[] = [];

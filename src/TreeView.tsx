@@ -16,7 +16,7 @@ import type {
   ReactNode,
 } from "react";
 import { collectMatches, getMatchRanges, normalizeQuery } from "./search";
-import { findDuplicateIds, flattenTree, getDropTarget } from "./tree-utils";
+import { collectIds, findDuplicateIds, flattenTree, getDropTarget } from "./tree-utils";
 import type { DropTarget, FlattenedNode, TreeId } from "./tree-utils";
 import type { TreeDndAdapter } from "./dnd-internal";
 import { createProjectionCache } from "./projection-cache";
@@ -60,28 +60,28 @@ function highlight(label: string, ranges: Array<[number, number]>): ReactNode {
 
 function TreeViewInner<T = unknown>(
   {
-  data,
-  defaultExpandedIds,
-  onExpandedChange,
-  selectedId,
-  defaultSelectedId,
-  onSelect,
-  indentation = DEFAULT_INDENTATION,
-  rowHeight: rowHeightProp = DEFAULT_ROW_HEIGHT,
-  height,
-  overscan = DEFAULT_OVERSCAN,
-  renderNode,
-  renderIcon,
-  className,
-  rowClassName,
-  emptyState,
-  searchQuery,
-  noResults,
-  contextMenu,
-  "aria-label": ariaLabel,
-  "aria-labelledby": ariaLabelledBy,
-  dnd,
-}: TreeViewProps<T> & { dnd?: TreeDndAdapter },
+    data,
+    defaultExpandedIds,
+    onExpandedChange,
+    selectedId,
+    defaultSelectedId,
+    onSelect,
+    indentation = DEFAULT_INDENTATION,
+    rowHeight: rowHeightProp = DEFAULT_ROW_HEIGHT,
+    height,
+    overscan = DEFAULT_OVERSCAN,
+    renderNode,
+    renderIcon,
+    className,
+    rowClassName,
+    emptyState,
+    searchQuery,
+    noResults,
+    contextMenu,
+    "aria-label": ariaLabel,
+    "aria-labelledby": ariaLabelledBy,
+    dnd,
+  }: TreeViewProps<T> & { dnd?: TreeDndAdapter },
   ref: ForwardedRef<TreeViewHandle>,
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -89,13 +89,55 @@ function TreeViewInner<T = unknown>(
   // A non-positive or non-finite rowHeight would stack every row at top:0.
   const rowHeight =
     Number.isFinite(rowHeightProp) && rowHeightProp > 0 ? rowHeightProp : DEFAULT_ROW_HEIGHT;
-  const [expanded, setExpanded] = useState<ReadonlySet<TreeId>>(
-    () => new Set(defaultExpandedIds),
-  );
+  const [expanded, setExpanded] = useState<ReadonlySet<TreeId>>(() => new Set(defaultExpandedIds));
 
-  const [uncontrolledSelectedId, setUncontrolledSelectedId] = useState<TreeId | undefined>(
+  const [uncontrolledSelectedState, setUncontrolledSelectedId] = useState<TreeId | undefined>(
     defaultSelectedId,
   );
+
+  // Every id of the whole new tree (not just the visible rows): one O(n) pass per `data`.
+  const allIds = useMemo(() => collectIds(data), [data]);
+  // When `data` is replaced, ids that no longer exist in it are dropped from the internal
+  // state (uncontrolled selection, expanded nodes) silently: no `onSelect` and no
+  // `onExpandedChange`, since it is a consequence of the new `data`, not a user action.
+  // Done during render so a stale selection is never painted. Ids that are only hidden
+  // (closed branch, search filter) still exist in `data` and are kept.
+  const [reconciledData, setReconciledData] = useState(data);
+  // User toggles made while searching (explained below); declared here to be reconciled too.
+  const [searchToggles, setSearchToggles] = useState<{
+    query: string;
+    toggled: ReadonlySet<TreeId>;
+  } | null>(null);
+  let uncontrolledSelectedId = uncontrolledSelectedState;
+  let expandedNow = expanded;
+  if (reconciledData !== data) {
+    setReconciledData(data);
+    if (uncontrolledSelectedId !== undefined && !allIds.has(uncontrolledSelectedId)) {
+      uncontrolledSelectedId = undefined;
+      setUncontrolledSelectedId(undefined);
+    }
+    let kept: Set<TreeId> | null = null;
+    for (const id of expanded) {
+      if (allIds.has(id)) continue;
+      kept ??= new Set(expanded);
+      kept.delete(id);
+    }
+    if (kept) {
+      expandedNow = kept;
+      setExpanded(kept);
+    }
+    // Same for the user's search toggles: a toggle on a vanished id must not come back
+    // if the id returns later.
+    if (searchToggles) {
+      let keptToggles: Set<TreeId> | null = null;
+      for (const id of searchToggles.toggled) {
+        if (allIds.has(id)) continue;
+        keptToggles ??= new Set(searchToggles.toggled);
+        keptToggles.delete(id);
+      }
+      if (keptToggles) setSearchToggles({ query: searchToggles.query, toggled: keptToggles });
+    }
+  }
   // `selectedId={undefined}` means uncontrolled; `null` is a controlled "nothing selected".
   const currentSelectedId = selectedId !== undefined ? selectedId : uncontrolledSelectedId;
 
@@ -107,20 +149,16 @@ function TreeViewInner<T = unknown>(
   // (relative to the auto-expanded ones), tied to the normalized query: it survives a new
   // `data` reference, is dropped when the query really changes, and `expanded` is left
   // untouched, so clearing the query restores it exactly.
-  const [searchToggles, setSearchToggles] = useState<{
-    query: string;
-    toggled: ReadonlySet<TreeId>;
-  } | null>(null);
   if (searchToggles && searchToggles.query !== normalizedQuery) setSearchToggles(null);
   const effectiveExpanded = useMemo<ReadonlySet<TreeId>>(() => {
-    if (!search) return expanded;
+    if (!search) return expandedNow;
     if (!searchToggles || searchToggles.query !== search.query) return search.expandedIds;
     const next = new Set(search.expandedIds);
     for (const id of searchToggles.toggled) {
       if (!next.delete(id)) next.add(id);
     }
     return next;
-  }, [search, searchToggles, expanded]);
+  }, [search, searchToggles, expandedNow]);
 
   // While a node is dragged its descendants are hidden: lay out as if it were collapsed.
   const activeDragId = dnd?.activeId ?? null;
@@ -232,6 +270,22 @@ function TreeViewInner<T = unknown>(
     }
   }, [height, rows.length, rowHeight, viewport]);
 
+  // Controlled `selectedId` pointing at an id missing from `data`: the library never changes
+  // it, it only warns (development), once per missing id.
+  const warnedMissingSelected = useRef<TreeId | null>(null);
+  useEffect(() => {
+    if (selectedId === undefined || selectedId === null || allIds.has(selectedId)) {
+      warnedMissingSelected.current = null;
+      return;
+    }
+    if (!isDevelopment() || warnedMissingSelected.current === selectedId) return;
+    warnedMissingSelected.current = selectedId;
+    console.warn(
+      `[react-virtual-tree-view] The controlled selectedId "${String(selectedId)}" does not exist in \`data\`. ` +
+        "The selection is left untouched: update `selectedId` together with `data`.",
+    );
+  }, [selectedId, allIds]);
+
   const warnedDuplicates = useRef("");
 
   useEffect(() => {
@@ -299,7 +353,15 @@ function TreeViewInner<T = unknown>(
       setMenu(null);
       return false;
     }
-    setMenu({ node, items, anchor, rowEl, rowIndex: index, source, key: ++menuCounter.current });
+    setMenu({
+      node,
+      items,
+      anchor,
+      rowEl,
+      rowIndex: index,
+      source,
+      key: ++menuCounter.current,
+    });
     return true;
   };
   const closeMenu = (restoreFocus: boolean) => {
@@ -311,9 +373,7 @@ function TreeViewInner<T = unknown>(
     const row = current.rowEl.isConnected
       ? current.rowEl
       : rows[current.rowIndex]?.item.node === current.node
-        ? containerRef.current?.querySelector<HTMLElement>(
-            `[data-row-index="${current.rowIndex}"]`,
-          )
+        ? containerRef.current?.querySelector<HTMLElement>(`[data-row-index="${current.rowIndex}"]`)
         : null;
     row?.focus({ preventScroll: true });
   };
@@ -327,6 +387,7 @@ function TreeViewInner<T = unknown>(
     rows: keyboardRows,
     firstIndexById,
     selectedIndex,
+    knownIds: allIds,
     containerRef,
     scrollToIndex,
     toggle,
@@ -339,7 +400,8 @@ function TreeViewInner<T = unknown>(
   // out of the window too, the first rendered row takes the tabindex instead.
   const { focusedIndex, anchored, hasFocus } = keyboard;
   const focusedInWindow = focusedIndex >= start && focusedIndex < end;
-  const keepTarget = anchored || hasFocus;
+  // An empty tree has no roving row (focusedIndex -1): nothing to keep mounted.
+  const keepTarget = focusedIndex >= 0 && (anchored || hasFocus);
   const tabbableIndex = focusedInWindow || keepTarget ? focusedIndex : start;
   const renderedIndexes: number[] = [];
   for (let i = start; i < end; i++) renderedIndexes.push(i);
@@ -380,10 +442,7 @@ function TreeViewInner<T = unknown>(
       } else {
         top = content.getBoundingClientRect().top;
       }
-      const overIndex = Math.min(
-        rows.length - 1,
-        Math.max(0, Math.floor((y - top) / rowHeight)),
-      );
+      const overIndex = Math.min(rows.length - 1, Math.max(0, Math.floor((y - top) / rowHeight)));
       const steps = Math.round(dx / indentation);
       return cache.get(activeId, overIndex, steps, () => {
         flat ??= rows.map((row) => row.item);
@@ -442,13 +501,7 @@ function TreeViewInner<T = unknown>(
             cursor: hasChildren ? "pointer" : undefined,
           }}
         >
-          {hasChildren
-            ? renderIcon
-              ? renderIcon(state)
-              : state.isExpanded
-                ? "▾"
-                : "▸"
-            : null}
+          {hasChildren ? (renderIcon ? renderIcon(state) : state.isExpanded ? "▾" : "▸") : null}
         </span>
         {renderNode ? renderNode(node, state) : highlight(node.label, state.matchRanges)}
       </>
@@ -498,7 +551,6 @@ function TreeViewInner<T = unknown>(
         })()
       : null;
 
-  // Ids in `expandedIds` that no longer exist in `data` are ignored but kept in the set.
   return (
     <>
       <div
@@ -513,109 +565,107 @@ function TreeViewInner<T = unknown>(
         // `height` is set only when the prop is given, so the consumer's CSS can size the
         // tree; an empty tree gets no height/overflow so `emptyState` sits right below it.
         style={
-          rows.length === 0
-            ? undefined
-            : { overflow: "auto", height, boxSizing: "border-box" }
+          rows.length === 0 ? undefined : { overflow: "auto", height, boxSizing: "border-box" }
         }
       >
         <div ref={contentRef} role="none" style={{ position: "relative", height: totalHeight }}>
-        {renderedIndexes.map((index) => {
-          const { item, key, setSize, posInSet } = rows[index]!;
-          const { node, depth, hasChildren } = item;
-          const state = buildState(index);
-          const rowProps = {
-            role: "treeitem",
-            className: classFor(state),
-            "data-node-id": String(node.id),
-            "data-row-index": index,
-            tabIndex: index === tabbableIndex ? 0 : -1,
-            onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => {
-              if (
-                contextMenu &&
-                event.target === event.currentTarget &&
-                ((event.key === "F10" && event.shiftKey && !event.ctrlKey && !event.altKey) ||
-                  event.key === "ContextMenu")
-              ) {
-                const rect = event.currentTarget.getBoundingClientRect();
-                const opened = openMenu(
-                  index,
-                  event.currentTarget,
-                  { x: rect.left, y: rect.bottom, altY: rect.top },
-                  "keyboard",
-                );
-                // Nothing to show: leave the native menu alone.
-                if (opened) event.preventDefault();
-                return;
-              }
-              keyboard.onRowKeyDown(event, index);
-            },
-            onContextMenu: contextMenu
-              ? (event: MouseEvent<HTMLDivElement>) => {
-                  // The key already opened the menu; the browser may add its own contextmenu event.
-                  if (
-                    menu?.source === "keyboard" &&
-                    menu.rowEl === event.currentTarget &&
-                    event.button === 0
-                  ) {
-                    event.preventDefault();
-                    return;
-                  }
+          {renderedIndexes.map((index) => {
+            const { item, key, setSize, posInSet } = rows[index]!;
+            const { node, depth, hasChildren } = item;
+            const state = buildState(index);
+            const rowProps = {
+              role: "treeitem",
+              className: classFor(state),
+              "data-node-id": String(node.id),
+              "data-row-index": index,
+              tabIndex: index === tabbableIndex ? 0 : -1,
+              onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => {
+                if (
+                  contextMenu &&
+                  event.target === event.currentTarget &&
+                  ((event.key === "F10" && event.shiftKey && !event.ctrlKey && !event.altKey) ||
+                    event.key === "ContextMenu")
+                ) {
+                  const rect = event.currentTarget.getBoundingClientRect();
                   const opened = openMenu(
                     index,
                     event.currentTarget,
-                    { x: event.clientX, y: event.clientY },
-                    "pointer",
+                    { x: rect.left, y: rect.bottom, altY: rect.top },
+                    "keyboard",
                   );
+                  // Nothing to show: leave the native menu alone.
                   if (opened) event.preventDefault();
+                  return;
                 }
-              : undefined,
-            onFocus: (event: FocusEvent<HTMLDivElement>) => keyboard.onRowFocus(event, index),
-            onClick: () => select(index),
-            "data-disabled": state.isDisabled ? "" : undefined,
-            "aria-level": depth + 1,
-            "aria-setsize": setSize,
-            "aria-posinset": posInSet,
-            "aria-haspopup": contextMenu ? ("menu" as const) : undefined,
-            "aria-expanded": hasChildren ? state.isExpanded : undefined,
-            "aria-selected": state.isSelected,
-            "aria-disabled": state.isDisabled ? true : undefined,
-            style: {
-              position: "absolute",
-              top: item.index * rowHeight,
-              left: 0,
-              right: 0,
-              height: rowHeight,
-              boxSizing: "border-box",
-              paddingLeft: depth * indentation,
-            } as const,
-          };
-          const body = renderBody(index, state, true);
-          if (!dnd) {
+                keyboard.onRowKeyDown(event, index);
+              },
+              onContextMenu: contextMenu
+                ? (event: MouseEvent<HTMLDivElement>) => {
+                    // The key already opened the menu; the browser may add its own contextmenu event.
+                    if (
+                      menu?.source === "keyboard" &&
+                      menu.rowEl === event.currentTarget &&
+                      event.button === 0
+                    ) {
+                      event.preventDefault();
+                      return;
+                    }
+                    const opened = openMenu(
+                      index,
+                      event.currentTarget,
+                      { x: event.clientX, y: event.clientY },
+                      "pointer",
+                    );
+                    if (opened) event.preventDefault();
+                  }
+                : undefined,
+              onFocus: (event: FocusEvent<HTMLDivElement>) => keyboard.onRowFocus(event, index),
+              onClick: () => select(index),
+              "data-disabled": state.isDisabled ? "" : undefined,
+              "aria-level": depth + 1,
+              "aria-setsize": setSize,
+              "aria-posinset": posInSet,
+              "aria-haspopup": contextMenu ? ("menu" as const) : undefined,
+              "aria-expanded": hasChildren ? state.isExpanded : undefined,
+              "aria-selected": state.isSelected,
+              "aria-disabled": state.isDisabled ? true : undefined,
+              style: {
+                position: "absolute",
+                top: item.index * rowHeight,
+                left: 0,
+                right: 0,
+                height: rowHeight,
+                boxSizing: "border-box",
+                paddingLeft: depth * indentation,
+              } as const,
+            };
+            const body = renderBody(index, state, true);
+            if (!dnd) {
+              return (
+                <div key={key} {...rowProps}>
+                  {body}
+                </div>
+              );
+            }
             return (
-              <div key={key} {...rowProps}>
+              <dnd.RowShell
+                key={key}
+                nodeId={node.id}
+                dragDisabled={state.isDisabled || !!search}
+                {...rowProps}
+              >
                 {body}
-              </div>
+              </dnd.RowShell>
             );
-          }
-          return (
-            <dnd.RowShell
-              key={key}
-              nodeId={node.id}
-              dragDisabled={state.isDisabled || !!search}
-              {...rowProps}
-            >
-              {body}
-            </dnd.RowShell>
-          );
-        })}
-        {dnd && (
-          <DropIndicator
-            store={dnd.previewStore}
-            rowHeight={rowHeight}
-            indentation={indentation}
-            render={dnd.renderDropIndicator}
-          />
-        )}
+          })}
+          {dnd && (
+            <DropIndicator
+              store={dnd.previewStore}
+              rowHeight={rowHeight}
+              indentation={indentation}
+              render={dnd.renderDropIndicator}
+            />
+          )}
         </div>
       </div>
       {menu && contextMenu && (
@@ -643,7 +693,9 @@ ForwardedTreeView.displayName = "TreeView";
 
 /** Internal: `TreeView` plus the `dnd` seam used by `DraggableTreeView`. Not exported publicly. */
 export const TreeViewWithDnd = ForwardedTreeView as <T = unknown>(
-  props: TreeViewProps<T> & { dnd?: TreeDndAdapter } & { ref?: ForwardedRef<TreeViewHandle> },
+  props: TreeViewProps<T> & { dnd?: TreeDndAdapter } & {
+    ref?: ForwardedRef<TreeViewHandle>;
+  },
 ) => ReactElement | null;
 
 export const TreeView = ForwardedTreeView as <T = unknown>(
