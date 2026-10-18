@@ -299,11 +299,13 @@ A pointer **below the last row** of the list (the blank space under a short list
 edge of the container when the list is scrolled to its end) means "the end of the whole tree": the
 last position among the roots.
 
-While a drag is active, a list whose rows fill the container — or come within one row of filling it,
-so it may start to scroll during the drag — keeps one blank row at its end, so this zone is at least
-one row tall, whatever padding or border the container has. The row stays after the drop for as long
-as the current scroll position needs it, so the content does not jump. A shorter list, or a container
-that grows with its content, is left untouched (to avoid shifting the layout under the pointer).
+While a drag is active, a list tall enough to scroll, or close enough that the drag itself (and its
+reserved row) might make it start scrolling, keeps one blank row at its end, so this zone is always
+at least one row tall, whatever padding or border the container has. The row normally clears right
+after the drop, once the scroll position no longer needs it (if the list was scrolled into the space
+the row provides, it stays until the list is scrolled back up by a row, so the content does not
+jump); a shorter list, or a container that grows with its content, is left untouched (to avoid
+shifting the layout under the pointer).
 
 **Known limit:** for every ancestor of the last visible row, except its direct parent, "become the
 last child of that ancestor" is not reachable without first collapsing something in its subtree (the

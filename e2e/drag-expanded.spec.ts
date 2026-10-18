@@ -273,4 +273,48 @@ test.describe("end of the tree with a bare container (no padding, no border)", (
     // r58 left the place above r59: the rows below move up by exactly one row, nothing more
     expect(Math.abs(lastAfter.y - (lastBefore.y - lastBefore.height))).toBeLessThan(1);
   });
+
+  test("the reserved row is released once the list is scrolled back up", async ({ page }) => {
+    await page.goto(bareUrl);
+    await expect(node(page, "r0")).toBeVisible();
+    const plain = await tree(page).evaluate((el) => el.scrollHeight);
+    await tree(page).evaluate((el) => (el.scrollTop = el.scrollHeight));
+    await expect(node(page, "r59-c5")).toBeVisible();
+    const start = await center(node(page, "r58"));
+    await dragToPoint(page, node(page, "r58"), { x: start.x, y: start.y + 8 });
+    const treeBox = (await tree(page).boundingBox())!;
+    await page.mouse.move(start.x, treeBox.y + treeBox.height - 6, { steps: 4 });
+    await expect(indicator(page)).toBeVisible();
+    await page.mouse.up();
+    await expect(log(page)).toContainText('"nodeId":"r58"');
+    // the scroll position still needs the row right after the drop
+    await page.waitForTimeout(300);
+    expect(await tree(page).evaluate((el) => el.scrollHeight)).toBeGreaterThan(plain);
+    // scrolling back up lets it go
+    await tree(page).evaluate((el) => (el.scrollTop = 0));
+    await expect.poll(() => tree(page).evaluate((el) => el.scrollHeight)).toBe(plain);
+  });
+
+  test("a nearly full list dropped without scrolling leaves no blank row behind", async ({ page }) => {
+    await page.goto(bareUrl);
+    await expect(node(page, "r0")).toBeVisible();
+    // make the container a little taller than the rows: it does not scroll without the reserved row
+    const plain = await tree(page).evaluate((el) => {
+      const content = el.scrollHeight;
+      el.style.height = `${content + 10}px`;
+      return content;
+    });
+    expect(await tree(page).evaluate((el) => el.clientHeight)).toBe(plain + 10);
+    expect(await tree(page).evaluate((el) => el.scrollHeight)).toBe(plain + 10);
+    const start = await center(node(page, "r0"));
+    await dragToPoint(page, node(page, "r0"), { x: start.x, y: start.y + 64 });
+    // with the reserved row the list can scroll during the drag
+    await expect.poll(() => tree(page).evaluate((el) => el.scrollHeight)).toBeGreaterThan(plain);
+    expect(await tree(page).evaluate((el) => el.scrollTop)).toBe(0);
+    await page.mouse.up();
+    await expect(log(page)).toContainText('"nodeId":"r0"');
+    // no residual row: the list is back to not scrolling at all
+    await expect.poll(() => tree(page).evaluate((el) => el.scrollHeight)).toBe(plain + 10);
+    expect(await tree(page).evaluate((el) => el.scrollTop)).toBe(0);
+  });
 });

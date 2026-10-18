@@ -459,13 +459,14 @@ function TreeViewInner<T = unknown>(
       : 0;
   // When the drag ends the row must not vanish while the scroll position still needs it:
   // the browser would clamp `scrollTop` and the content would jump under the pointer. It is
-  // kept until the list is scrolled back to where it is no longer needed. The DOM is read
+  // kept while `scrollTop` is beyond what the rows alone can reach (the row is what holds that
+  // position up) and released once it is back within their reach. The DOM is read
   // before the commit, so `scrollTop` is still the one of the drag.
   const [keepEndRow, setKeepEndRow] = useState(false);
   const hadEndRow = useRef(0);
   if (hadEndRow.current === 1 && dragEndRow === 0 && !keepEndRow) {
     const el = containerRef.current;
-    if (el && el.scrollTop + el.clientHeight > rows.length * rowHeight) setKeepEndRow(true);
+    if (el && el.scrollTop > Math.max(0, rows.length * rowHeight - el.clientHeight)) setKeepEndRow(true);
   }
   const endRow = dragEndRow === 1 || keepEndRow ? 1 : 0;
   useEffect(() => {
@@ -473,7 +474,10 @@ function TreeViewInner<T = unknown>(
   }, [dragEndRow]);
   const releaseEndRow = () => {
     const el = containerRef.current;
-    if (el && el.scrollTop + el.clientHeight <= rows.length * rowHeight) setKeepEndRow(false);
+    // one row of hysteresis below the scroll the rows alone can reach
+    if (el && el.scrollTop <= Math.max(0, rows.length * rowHeight - el.clientHeight - rowHeight)) {
+      setKeepEndRow(false);
+    }
   };
   useEffect(() => {
     if (!keepEndRow) return;
