@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DraggableTreeView, TreeView } from "../../src";
 import type { TreeNode } from "../../src";
@@ -40,13 +46,17 @@ const treeAv2 = (): TreeNode[] => [
   { id: "a-readme", label: "README v2" },
 ];
 
-const rowIds = () => screen.queryAllByRole("treeitem").map((el) => el.getAttribute("data-node-id"));
+const rowIds = () =>
+  screen
+    .queryAllByRole("treeitem")
+    .map((el) => el.getAttribute("data-node-id"));
 const selectedIds = () =>
   screen
     .queryAllByRole("treeitem")
     .filter((el) => el.getAttribute("aria-selected") === "true")
     .map((el) => el.getAttribute("data-node-id"));
-const row = (id: string) => document.querySelector<HTMLElement>(`[data-node-id="${id}"]`)!;
+const row = (id: string) =>
+  document.querySelector<HTMLElement>(`[data-node-id="${id}"]`)!;
 
 describe("collectIds", () => {
   it("collects every id of the whole tree, hidden or not", () => {
@@ -76,19 +86,37 @@ describe.each([
   it("1. resets an uncontrolled selection whose id is not in the new tree, without onSelect", () => {
     const onSelect = vi.fn();
     const { rerender } = render(
-      <Component data={treeA()} defaultSelectedId="a-readme" onSelect={onSelect} />,
+      <Component
+        data={treeA()}
+        defaultSelectedId="a-readme"
+        onSelect={onSelect}
+      />,
     );
     expect(selectedIds()).toEqual(["a-readme"]);
-    rerender(<Component data={treeB()} defaultSelectedId="a-readme" onSelect={onSelect} />);
+    rerender(
+      <Component
+        data={treeB()}
+        defaultSelectedId="a-readme"
+        onSelect={onSelect}
+      />,
+    );
     expect(selectedIds()).toEqual([]);
     expect(onSelect).not.toHaveBeenCalled();
     // ...and it does not come back when the old id reappears later.
-    rerender(<Component data={treeA()} defaultSelectedId="a-readme" onSelect={onSelect} />);
+    rerender(
+      <Component
+        data={treeA()}
+        defaultSelectedId="a-readme"
+        onSelect={onSelect}
+      />,
+    );
     expect(selectedIds()).toEqual([]);
   });
 
   it("1. keeps a selection hidden by a closed branch", () => {
-    const { rerender } = render(<Component data={treeA()} defaultExpandedIds={["a-docs"]} />);
+    const { rerender } = render(
+      <Component data={treeA()} defaultExpandedIds={["a-docs"]} />,
+    );
     fireEvent.click(row("a-cv"));
     expect(selectedIds()).toEqual(["a-cv"]);
     // New tree: same ids, branch closed (the expansion of a-docs is kept; collapse it).
@@ -104,22 +132,42 @@ describe.each([
     const { rerender } = render(
       <Component data={treeA()} defaultSelectedId="a-readme" searchQuery="" />,
     );
-    rerender(<Component data={treeAv2()} defaultSelectedId="a-readme" searchQuery="Documents" />);
+    rerender(
+      <Component
+        data={treeAv2()}
+        defaultSelectedId="a-readme"
+        searchQuery="Documents"
+      />,
+    );
     expect(rowIds()).not.toContain("a-readme");
-    rerender(<Component data={treeAv2()} defaultSelectedId="a-readme" searchQuery="" />);
+    rerender(
+      <Component
+        data={treeAv2()}
+        defaultSelectedId="a-readme"
+        searchQuery=""
+      />,
+    );
     expect(selectedIds()).toEqual(["a-readme"]);
   });
 
   it("1. resets when the search hides the id AND the new tree lacks it", () => {
     const { rerender } = render(
-      <Component data={treeA()} defaultSelectedId="a-readme" searchQuery="Doc" />,
+      <Component
+        data={treeA()}
+        defaultSelectedId="a-readme"
+        searchQuery="Doc"
+      />,
     );
-    rerender(<Component data={treeB()} defaultSelectedId="a-readme" searchQuery="" />);
+    rerender(
+      <Component data={treeB()} defaultSelectedId="a-readme" searchQuery="" />,
+    );
     expect(selectedIds()).toEqual([]);
   });
 
   it("4. keeps the selection when the id exists in the new tree with another label", () => {
-    const { rerender } = render(<Component data={treeA()} defaultSelectedId="a-readme" />);
+    const { rerender } = render(
+      <Component data={treeA()} defaultSelectedId="a-readme" />,
+    );
     rerender(<Component data={treeAv2()} defaultSelectedId="a-readme" />);
     expect(selectedIds()).toEqual(["a-readme"]);
     expect(row("a-readme").textContent).toContain("README v2");
@@ -127,7 +175,9 @@ describe.each([
 
   it("3. warns (development) for a controlled selectedId missing from data, once per id", () => {
     const warn = vi.mocked(console.warn);
-    const { rerender } = render(<Component data={treeA()} selectedId="a-readme" />);
+    const { rerender } = render(
+      <Component data={treeA()} selectedId="a-readme" />,
+    );
     expect(warn).not.toHaveBeenCalled();
     rerender(<Component data={treeB()} selectedId="a-readme" />);
     expect(warn).toHaveBeenCalledTimes(1);
@@ -147,7 +197,9 @@ describe.each([
 
   it("3. re-arms the warning once the controlled id is valid again", () => {
     const warn = vi.mocked(console.warn);
-    const { rerender } = render(<Component data={treeB()} selectedId="a-readme" />);
+    const { rerender } = render(
+      <Component data={treeB()} selectedId="a-readme" />,
+    );
     expect(warn).toHaveBeenCalledTimes(1);
     rerender(<Component data={treeA()} selectedId="a-readme" />);
     expect(selectedIds()).toEqual(["a-readme"]);
@@ -159,7 +211,9 @@ describe.each([
     const warn = vi.mocked(console.warn);
     const { rerender } = render(<Component data={treeA()} selectedId={null} />);
     rerender(<Component data={treeA()} selectedId="a-leaf" />);
-    rerender(<Component data={treeA()} selectedId="a-readme" searchQuery="Doc" />);
+    rerender(
+      <Component data={treeA()} selectedId="a-readme" searchQuery="Doc" />,
+    );
     rerender(<Component data={treeB()} />);
     expect(warn).not.toHaveBeenCalled();
   });
@@ -167,7 +221,9 @@ describe.each([
   it("3. emits no warning in production", () => {
     vi.stubEnv("NODE_ENV", "production");
     const warn = vi.mocked(console.warn);
-    const { rerender } = render(<Component data={treeA()} selectedId="a-readme" />);
+    const { rerender } = render(
+      <Component data={treeA()} selectedId="a-readme" />,
+    );
     rerender(<Component data={treeB()} selectedId="a-readme" />);
     expect(warn).not.toHaveBeenCalled();
   });
@@ -227,33 +283,49 @@ describe.each([
   });
 
   it("5. focus: a vanished focused id leaves exactly one tabbable row of the new tree", () => {
-    const { rerender } = render(<Component data={treeA()} defaultExpandedIds={["a-docs"]} />);
+    const { rerender } = render(
+      <Component data={treeA()} defaultExpandedIds={["a-docs"]} />,
+    );
     row("a-docs").focus();
     fireEvent.keyDown(row("a-docs"), { key: "ArrowDown" });
     fireEvent.keyDown(row("a-cv"), { key: "ArrowDown" });
     expect(document.activeElement).toBe(row("a-deep"));
     rerender(<Component data={treeB()} defaultExpandedIds={["a-docs"]} />);
-    const tabbable = screen.getAllByRole("treeitem").filter((el) => el.tabIndex === 0);
+    const tabbable = screen
+      .getAllByRole("treeitem")
+      .filter((el) => el.tabIndex === 0);
     expect(tabbable).toHaveLength(1);
-    expect(["b-dir", "b-2"]).toContain(tabbable[0]!.getAttribute("data-node-id"));
+    expect(["b-dir", "b-2"]).toContain(
+      tabbable[0]!.getAttribute("data-node-id"),
+    );
     // Arrows and Enter work on the new tree.
     act(() => tabbable[0]!.focus());
     fireEvent.keyDown(tabbable[0]!, { key: "Enter" });
     expect(selectedIds()).toEqual([tabbable[0]!.getAttribute("data-node-id")]);
     fireEvent.keyDown(tabbable[0]!, { key: "ArrowDown" });
-    expect(rowIds()).toContain(document.activeElement!.getAttribute("data-node-id"));
+    expect(rowIds()).toContain(
+      document.activeElement!.getAttribute("data-node-id"),
+    );
   });
 
   it("5. an empty new tree does not throw, and a later tree works", () => {
     const { rerender } = render(
-      <Component data={treeA()} defaultSelectedId="a-readme" defaultExpandedIds={["a-docs"]} />,
+      <Component
+        data={treeA()}
+        defaultSelectedId="a-readme"
+        defaultExpandedIds={["a-docs"]}
+      />,
     );
     row("a-docs").focus();
-    expect(() => rerender(<Component data={[]} defaultSelectedId="a-readme" />)).not.toThrow();
+    expect(() =>
+      rerender(<Component data={[]} defaultSelectedId="a-readme" />),
+    ).not.toThrow();
     expect(rowIds()).toEqual([]);
     rerender(<Component data={treeA()} defaultSelectedId="a-readme" />);
     expect(selectedIds()).toEqual([]);
-    expect(screen.getAllByRole("treeitem").filter((el) => el.tabIndex === 0)).toHaveLength(1);
+    expect(
+      screen.getAllByRole("treeitem").filter((el) => el.tabIndex === 0),
+    ).toHaveLength(1);
   });
 
   it("copes with duplicate ids in the new tree and with many quick swaps", () => {
@@ -261,14 +333,23 @@ describe.each([
       { id: "x", label: "one" },
       { id: "x", label: "two" },
     ];
-    const { rerender } = render(<Component data={treeA()} defaultSelectedId="a-readme" />);
+    const { rerender } = render(
+      <Component data={treeA()} defaultSelectedId="a-readme" />,
+    );
     rerender(<Component data={dup} defaultSelectedId="a-readme" />);
     expect(selectedIds()).toEqual([]);
     for (let i = 0; i < 20; i++) {
-      rerender(<Component data={i % 2 ? treeA() : treeB()} defaultSelectedId="a-readme" />);
+      rerender(
+        <Component
+          data={i % 2 ? treeA() : treeB()}
+          defaultSelectedId="a-readme"
+        />,
+      );
     }
     expect(selectedIds()).toEqual([]);
-    expect(screen.getAllByRole("treeitem").filter((el) => el.tabIndex === 0)).toHaveLength(1);
+    expect(
+      screen.getAllByRole("treeitem").filter((el) => el.tabIndex === 0),
+    ).toHaveLength(1);
   });
 
   it("does not reset anything when data changes identity but keeps every id", () => {
@@ -292,5 +373,39 @@ describe.each([
     expect(selectedIds()).toEqual(["a-readme"]);
     expect(row("a-docs").getAttribute("aria-expanded")).toBe("true");
     expect(onExpandedChange).not.toHaveBeenCalled();
+  });
+
+  it("5. forgets a search toggle on a vanished id: it follows the search again when it returns", () => {
+    const withX = (): TreeNode[] => [
+      { id: "x", label: "Box", children: [{ id: "x-1", label: "foo item" }] },
+      { id: "y", label: "Other" },
+    ];
+    const withoutX = (): TreeNode[] => [
+      { id: "y", label: "Other" },
+      { id: "z", label: "foo zed" },
+    ];
+    const { rerender } = render(<Component data={withX()} searchQuery="foo" />);
+    // The search auto-expands x; the user closes it.
+    expect(rowIds()).toEqual(["x", "x-1"]);
+    fireEvent.click(row("x").querySelector("[data-toggle]")!);
+    expect(rowIds()).toEqual(["x"]);
+    // x disappears while the same query stays active, then comes back.
+    rerender(<Component data={withoutX()} searchQuery="foo" />);
+    expect(rowIds()).toEqual(["z"]);
+    rerender(<Component data={withX()} searchQuery="foo" />);
+    expect(rowIds()).toEqual(["x", "x-1"]);
+  });
+
+  it("5. keeps a search toggle on an id that survives the swap", () => {
+    const tree = (label: string): TreeNode[] => [
+      { id: "x", label: "Box", children: [{ id: "x-1", label }] },
+    ];
+    const { rerender } = render(
+      <Component data={tree("foo one")} searchQuery="foo" />,
+    );
+    fireEvent.click(row("x").querySelector("[data-toggle]")!);
+    expect(rowIds()).toEqual(["x"]);
+    rerender(<Component data={tree("foo two")} searchQuery="foo" />);
+    expect(rowIds()).toEqual(["x"]);
   });
 });
