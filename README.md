@@ -342,6 +342,65 @@ function StandaloneContextMenu() {
 }
 ```
 
+### Checkbox mode
+
+`checkable` adds a checkbox to every row, with a cascade towards the descendants and an aggregated
+(indeterminate) state towards the ancestors. It works on `TreeView` and `DraggableTreeView`; without
+`checkable` nothing is rendered and nothing changes.
+
+```tsx
+import { useState } from "react";
+import { TreeView } from "react-virtual-tree-view";
+
+function CheckableTree() {
+  const [checked, setChecked] = useState<Array<string | number>>(["cv"]);
+  return (
+    <TreeView
+      data={files}
+      aria-label="Files"
+      checkable
+      checkedIds={checked}
+      onCheckedChange={setChecked}
+    />
+  );
+}
+```
+
+Use `defaultCheckedIds` instead of `checkedIds` for the uncontrolled mode (read once, like
+`defaultExpandedIds`). `onCheckedChange` is called once per user action (checkbox click or Space) with
+every node whose state is checked, ancestors included, in tree order: it can be fed back to
+`checkedIds` as is.
+
+- **Independent from the selection.** Clicking the checkbox does not select the row (`onSelect`,
+  `selectedId`), clicking the row does not check it, and the checkbox never starts a drag. Space toggles
+  the focused node, Enter selects.
+- **Where `aria-checked` lives.** On the `role="treeitem"` row (`true`, `false` or `"mixed"`), and
+  `role="tree"` gets `aria-multiselectable="true"`. The native `<input type="checkbox" data-checkbox>`
+  is `aria-hidden` and out of the tab order: it is a pointer affordance, the row is what assistive
+  technology reads and what the keyboard drives. `renderNode` and `rowClassName` receive
+  `state.checkState` (`true`, `false`, `"mixed"`, `undefined` without `checkable`).
+- **Parents are derived.** A parent is checked when all its children are, unchecked when none is,
+  `"mixed"` otherwise (at any depth). The ids of parents you pass in `checkedIds`/`defaultCheckedIds`
+  are ignored when the parent has an enabled child: with `checkedIds={["p", "a"]}` where `p` has
+  children `a` and `b`, `p` shows `"mixed"`. A parent whose children are all disabled shows its own
+  state, and a leaf is checked when its id is listed. Ids missing from `data` are ignored.
+- **Search does not limit the cascade.** The cascade and the aggregate are computed on the whole `data`,
+  not on the visible rows: checking a parent while `searchQuery`/`searchTerms` hides some of its
+  children checks them too (clear the search and they are checked), and a parent is `"mixed"` also
+  because of hidden descendants. `data` is the source of truth, whatever is rendered.
+- **Disabled nodes.** A node with `isDisabled` cannot be changed, by the user or by a cascade, and
+  neither can anything below it (their checkboxes are `disabled`; `onCheckedChange` is not called).
+  Siblings are still checked. Their current state (from `defaultCheckedIds`/`checkedIds`) stays and
+  counts for the ancestors: a checked disabled child keeps its parent `"mixed"` or `true`. A parent
+  with an unchecked disabled child still toggles its enabled children, and a second click unchecks
+  them (it never gets stuck on `"mixed"`).
+- **Vanished ids.** When `data` is replaced, ids no longer in it are dropped silently from the
+  uncontrolled state (no `onCheckedChange`). A controlled `checkedIds` is never touched.
+- **Drag & drop.** The state follows the node id: moving a node does not change its checked state and
+  the parents involved are recalculated. Dragging stays off while a search is active.
+- **Cost.** One O(n) pass with a `Set` per change of `data` or `checkedIds` (memoize the array you pass);
+  the pure helpers `getCheckStates`, `getCheckedIds` and `toggleChecked` are exported.
+
 ## Props
 
 `TreeView` props (`DraggableTreeView` accepts all of them plus its own):
@@ -358,6 +417,9 @@ function StandaloneContextMenu() {
 | `selectedId` | `string \| number \| null` | none | Controlled selection (`null` = nothing). |
 | `defaultSelectedId` | `string \| number` | none | Initial selection, uncontrolled (read once). |
 | `onSelect` | `(id, node) => void` | none | User selected an enabled node (click, Enter, Space). |
+| `checkable` | `boolean` | `false` | Checkbox on every row, with cascade and indeterminate state. See "Checkbox mode". |
+| `checkedIds` / `defaultCheckedIds` | `Array<string \| number>` | none | Controlled / initial (read once) checked ids. |
+| `onCheckedChange` | `(ids) => void` | none | User toggled a node; receives every checked id, ancestors included. |
 | `onStateChange` | `(state: TreeViewPersistableState) => void` | none | Expanded ids, selection or search query changed; see "Persisting the tree state". |
 | `initialState` | `TreeViewPersistableState` | none | State to restore on mount (read once); replaces `defaultExpandedIds`/`defaultSelectedId`. |
 | `searchQuery` | `string` | none | Case-insensitive substring filter on `label`; shows matches and their ancestors, wraps matches in `<mark>`. |
@@ -383,7 +445,7 @@ Additional `DraggableTreeView` props:
 | `autoScrollMaxSpeed` | `number` | `20` | Maximum auto-scroll speed in px per frame. |
 | `renderDropIndicator` | `(projection) => ReactNode` | thin line | Content of the drop indicator. |
 
-Keyboard: arrows move between rows and expand/collapse, Enter and Space select, Home/End jump to the
+Keyboard: arrows move between rows and expand/collapse, Enter and Space select (with `checkable`, Space toggles the checkbox and Enter selects), Home/End jump to the
 first/last row. Roles and attributes: `role="tree"`, `role="treeitem"`, `aria-expanded`,
 `aria-selected`, `aria-level`.
 
@@ -403,6 +465,9 @@ Pure functions from `tree-utils`, exported for custom drag logic, tests and tree
 | `getAncestorIds(tree, id)` | Ancestor ids from the root down to the parent. |
 | `findNodeById(tree, id)` | The node with that id, or `undefined`. |
 | `findDuplicateIds(tree)` | Ids that appear more than once. |
+| `getCheckStates(tree, checkedIds)` | `{ states, locked }`: the state of every node (`true`, `false`, `"mixed"`) and the ids that cannot be changed, in one O(n) pass. |
+| `getCheckedIds(states)` | Ids whose state is `true`, in tree order. |
+| `toggleChecked(tree, checkedIds, id)` | The checked ids after toggling `id` with cascade (`null` if nothing can change). |
 
 `getProjection`, `getDropTarget` and `getSiblingDropTarget` return `null` when no valid target exists
 (unknown ids, out-of-range index), so check the result before using it. `moveNode` returns an object,
@@ -417,7 +482,8 @@ const nextTree = moved.tree; // the new tree (same array as `files` if the move 
 
 Type exports: `TreeNode`, `TreeViewProps`, `DraggableTreeViewProps`, `RenderNodeState`, `TreeViewHandle`,
 `TreeChangeEvent`, `MenuItem`, `MenuAnchor`, `TreeContextMenuOptions`, `TreeContextMenuProps`,
-`FlattenedNode`, `Projection`, `MoveResult`, `TreeId`, `SiblingDropTarget`, `DropTarget`.
+`FlattenedNode`, `Projection`, `MoveResult`, `TreeId`, `SiblingDropTarget`, `DropTarget`, `CheckState`,
+`CheckStates`.
 
 ## Constraints worth knowing
 
