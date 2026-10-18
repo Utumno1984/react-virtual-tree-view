@@ -88,7 +88,8 @@ describe("DraggableTreeView maxDepth", () => {
     const y = startDrag("B", 2);
     for (let i = 0; i < 10; i++) move(100 + (i % 4) * IND, y + (i % 3) * ROW);
     expect(resolve.mock.calls.length).toBeGreaterThan(5);
-    for (const call of resolve.mock.calls) expect(call[6]).toBe(1);
+    // getDropTarget(flattened, activeId, overIndex, zone, maxDepth, subtreeHeight)
+    for (const call of resolve.mock.calls) expect(call[5]).toBe(1);
   });
 
   it("does not compute any height when there is no maxDepth", () => {
@@ -96,13 +97,14 @@ describe("DraggableTreeView maxDepth", () => {
     const spy = vi.mocked(treeUtils.getSubtreeHeight);
     spy.mockClear();
     startDrag("C", 3);
-    move(100 + IND, 3 * ROW);
+    // rows: p, A, B, C, q -> the middle of q's row ("becomes a child of q")
+    move(100 + IND, 4 * ROW + ROW / 2);
     expect(spy).not.toHaveBeenCalled();
     expect(indicator()!.getAttribute("data-depth-clamped")).toBe("false");
   });
 
-  it("flags the clamp on the indicator and passes it to renderDropIndicator", () => {
-    const seen: boolean[] = [];
+  it("refuses the child zone beyond maxDepth (no indicator) but keeps the sibling zones of the same row", () => {
+    const seen: string[] = [];
     render(
       <DraggableTreeView
         data={tree}
@@ -112,19 +114,27 @@ describe("DraggableTreeView maxDepth", () => {
         rowHeight={ROW}
         indentation={IND}
         renderDropIndicator={(projection) => {
-          seen.push(projection.clamped);
+          seen.push(projection.zone);
           return null;
         }}
       />,
     );
-    // rows: p, A, B, C, q -> drag C onto B, two levels right: wants depth 3, limit 1
-    const y = startDrag("C", 3);
-    move(100, y);
-    expect(indicator()!.getAttribute("data-depth-clamped")).toBe("false");
-    move(100 + 3 * IND, y - ROW);
+    // rows: p, A, B, C, q -> drag C (height 0); maxDepth 1
+    startDrag("C", 3);
+    // middle of A (depth 1): a child would be at depth 2 > 1 -> refused
+    move(100, 1 * ROW + ROW / 2);
+    expect(indicator()).toBeNull();
+    // upper and lower band of A: siblings at depth 1 -> allowed
+    move(100, 1 * ROW + 2);
     expect(indicator()!.getAttribute("data-projected-depth")).toBe("1");
-    expect(indicator()!.getAttribute("data-depth-clamped")).toBe("true");
-    expect(seen).toContain(true);
+    expect(indicator()!.getAttribute("data-drop-mode")).toBe("line");
+    move(100, 1 * ROW + ROW - 2);
+    expect(indicator()!.getAttribute("data-drop-zone")).toBe("after");
+    // middle of the root p: a child at depth 1 fits
+    move(100, ROW / 2);
+    expect(indicator()!.getAttribute("data-drop-mode")).toBe("child");
+    expect(indicator()!.getAttribute("data-depth-clamped")).toBe("false");
+    expect(seen).toEqual(expect.arrayContaining(["before", "after", "inside"]));
   });
 
   describe("development warnings", () => {
@@ -133,8 +143,10 @@ describe("DraggableTreeView maxDepth", () => {
       render(<DraggableTreeView data={tree} defaultExpandedIds={["p"]} maxDepth={value} height={400} rowHeight={ROW} indentation={IND} />);
       expect(warn).toHaveBeenCalledTimes(1);
       expect(String(warn.mock.calls[0]![0])).toContain("maxDepth");
-      const y = startDrag("C", 3);
-      move(100 + 3 * IND, y);
+      startDrag("C", 3);
+      // middle of A: a child at depth 2, which a (wrongly applied) limit of 0 or 1 would refuse
+      move(100, 1 * ROW + ROW / 2);
+      expect(indicator()!.getAttribute("data-projected-depth")).toBe("2");
       expect(indicator()!.getAttribute("data-depth-clamped")).toBe("false");
     });
 

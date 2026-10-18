@@ -14,6 +14,7 @@ import {
   flattenTree,
   getAncestorIds,
   getDropTarget,
+  getDropZone,
   getProjection,
   getSiblingDropTarget,
   getSubtreeHeight,
@@ -242,13 +243,13 @@ export function moveExample() {
 
 export function helperExamples() {
   const flat = flattenTree(files, ["docs"]);
-  const projection = getProjection(flat, "cv", "reports", 24, 24, 3);
-  const parentId = calculateNewParent(flat, 2, 1);
+  const projection = getProjection(flat, "cv", "reports", "inside", 3);
+  const parentId = calculateNewParent(flat, 2, "inside");
   const moved = moveNode(files, "notes", "docs", 0);
   const height = getSubtreeHeight(files[0]!);
   const duplicates = findDuplicateIds(files);
   const ancestors = getAncestorIds(files, "q2");
   const sibling = getSiblingDropTarget(flat, "cv", 2);
-  const target = getDropTarget(flat, "cv", 2, 24, 24, 3);
+  const target = getDropTarget(flat, "cv", 2, getDropZone(0.5), 3);
   return { projection, parentId, moved, height, duplicates, ancestors, sibling, target };
 }

@@ -40,30 +40,32 @@ describe("QA: tree-utils extra cases", () => {
     const r = moveNode(t, 2, 0, 0);
     expect(r.tree[0]!.children!.map((x) => x.id)).toEqual([2, 1]);
   });
-  it("getProjection: negative dx never goes below minDepth or 0", () => {
-    const p = getProjection(flat(), "c", "c", -1000, 20)!;
-    expect(p.depth).toBeGreaterThanOrEqual(p.minDepth);
-    expect(p.depth).toBeGreaterThanOrEqual(0);
+  it("getProjection: depth is never negative, whatever the zone", () => {
+    for (const zone of ["before", "inside", "after"] as const) {
+      const p = getProjection(flat(), "c", "a", zone)!;
+      expect(p.depth).toBeGreaterThanOrEqual(0);
+      expect(p.depth).toBe(p.minDepth);
+    }
   });
   it("getProjection: no maxDepth never clamps", () => {
-    const p = getProjection(flat(), "g", "g", 10000, 20)!;
+    const p = getProjection(flat(), "g", "c", "inside")!;
     expect(p.clamped).toBe(false);
     expect(p.depth).toBe(p.maxDepth);
   });
-  it("getProjection: clamped false when the neighbour limit is the binding one", () => {
-    const p = getProjection(flat(), "g", "g", 10000, 20, 99)!;
+  it("getProjection: a huge maxDepth refuses nothing and does not clamp", () => {
+    const p = getProjection(flat(), "g", "c", "inside", 99)!;
     expect(p.clamped).toBe(false);
   });
   it("getProjection: first position gives parent null", () => {
-    const p = getProjection(flat(), "g", "a", 500, 20)!;
+    const p = getProjection(flat(), "g", "a", "before")!;
     expect(p.depth).toBe(0);
     expect(p.parentId).toBeNull();
   });
-  it("getProjection: maxDepth 0 forces root and flags clamped", () => {
-    const p = getProjection(flat(), "g", "g", 500, 20, 0)!;
+  it("getProjection: maxDepth 0 allows only root-level drops", () => {
+    const p = getProjection(flat(), "g", "a", "after", 0)!;
     expect(p.depth).toBe(0);
-    expect(p.clamped).toBe(true);
     expect(p.parentId).toBeNull();
+    expect(getProjection(flat(), "g", "a", "inside", 0)).toBeNull();
   });
   it("moveNode: duplicate ids among siblings never lose a node", () => {
     const tree: TreeNode[] = [
@@ -76,6 +78,7 @@ describe("QA: tree-utils extra cases", () => {
     expect(result.tree.map((n) => n.label).sort()).toEqual(["one", "two", "y"]);
   });
   it("getProjection: over a descendant of active does not throw", () => {
-    expect(() => getProjection(flat(), "a", "b", 20, 20)).not.toThrow();
+    expect(() => getProjection(flat(), "a", "b", "inside")).not.toThrow();
+    expect(getProjection(flat(), "a", "b", "inside")).toBeNull();
   });
 });

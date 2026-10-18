@@ -13,8 +13,8 @@ function sweep(tree: TreeNode[], maxDepth: number | undefined, strict = true) {
   const flat = flattenTree(tree, expanded);
   for (const a of flat) {
     for (let row = 0; row < flat.length; row++) {
-      for (const dx of [-200, -48, 0, 48, 200, 1000]) {
-        const t = getDropTarget(flat, a.id, row, dx, 24, maxDepth);
+      for (const zone of ["before", "inside", "after"] as const) {
+        const t = getDropTarget(flat, a.id, row, zone, maxDepth);
         if (t && strict && maxDepth !== undefined) expect(t.projection.depth).toBeLessThanOrEqual(Math.max(maxDepth, 0));
         if (t) expect(t.slot).toBeGreaterThanOrEqual(0);
       }

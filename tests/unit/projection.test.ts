@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { TreeNode } from "../../src";
 import { flattenTree, getDropTarget, moveNode } from "../../src";
+import type { DropZone } from "../../src";
 import { createProjectionCache } from "../../src/projection-cache";
 
 const n = (id: string, children?: TreeNode[], isDisabled?: boolean): TreeNode => ({
@@ -18,14 +19,14 @@ const n = (id: string, children?: TreeNode[], isDisabled?: boolean): TreeNode =>
 //   D
 // q
 const tree = (): TreeNode[] => [n("p", [n("A"), n("B"), n("C", [n("c1")]), n("D")]), n("q")];
-const IND = 24;
 
 function target(
   t: TreeNode[],
   expanded: string[],
   activeId: string,
   overId: string,
-  dx: number,
+  zone: DropZone,
+  maxDepth?: number,
   hideActiveChildren = true,
 ) {
   const open = new Set(expanded);
@@ -35,97 +36,107 @@ function target(
     flat,
     activeId,
     flat.findIndex((x) => x.id === overId),
-    dx,
-    IND,
+    zone,
+    maxDepth,
   );
 }
 const open = ["p", "C"];
 
-describe("getDropTarget", () => {
-  it("dragging B one indentation right nests it as last child of A", () => {
-    const r = target(tree(), open, "B", "B", IND)!;
-    expect(r.parentId).toBe("A");
-    expect(r.index).toBe(0);
-    expect(r.projection.depth).toBe(2);
-    expect(r.isNoop).toBe(false);
-    const moved = moveNode(tree(), "B", r.parentId, r.index);
-    expect(moved.toParentId).toBe("A");
-    expect(moved.fromParentId).toBe("p");
+/** Result of really applying the drop: ids of the parent's children after the move. */
+function childrenAfter(t: TreeNode[], activeId: string, r: { parentId: string | number | null; index: number }) {
+  const moved = moveNode(t, activeId, r.parentId, r.index).tree;
+  const siblings = r.parentId === null ? moved : findIn(moved, r.parentId)!.children!;
+  return siblings.map((x) => x.id);
+}
+function findIn(nodes: TreeNode[], id: string | number): TreeNode | undefined {
+  for (const x of nodes) {
+    if (x.id === id) return x;
+    const f = findIn(x.children ?? [], id);
+    if (f) return f;
+  }
+  return undefined;
+}
+
+describe("getDropTarget: zones of the hovered row", () => {
+  it("upper band: previous sibling of the hovered row", () => {
+    const r = target(tree(), open, "D", "B", "before")!;
+    expect(r).toMatchObject({ parentId: "p", index: 1, isNoop: false });
+    expect(r.projection).toMatchObject({ depth: 1, zone: "before" });
+    expect(r.slot).toBe(2); // line above B's row
+    expect(childrenAfter(tree(), "D", r)).toEqual(["A", "D", "B", "C"]);
   });
 
-  it("nests after the existing children of an expanded previous row", () => {
-    // D right: previous row is c1 (depth 2, child of C), so depth 2 means child of C
-    const r = target(tree(), open, "D", "D", IND)!;
-    expect(r.parentId).toBe("C");
-    expect(r.index).toBe(1);
+  it("lower band: next sibling of the hovered row", () => {
+    const r = target(tree(), open, "D", "A", "after")!;
+    expect(r).toMatchObject({ parentId: "p", index: 1, isNoop: false });
+    expect(r.projection).toMatchObject({ depth: 1, zone: "after" });
+    expect(r.slot).toBe(2); // line below A's row
+    expect(childrenAfter(tree(), "D", r)).toEqual(["A", "D", "B", "C"]);
   });
 
-  it("dragging the last child left by one indentation makes it the next sibling of its parent", () => {
-    const t: TreeNode[] = [n("A", [n("C")]), n("B")];
-    const r = target(t, ["A"], "C", "C", -IND)!;
-    expect(r.parentId).toBeNull();
-    expect(r.index).toBe(1);
-    expect(r.projection.depth).toBe(0);
-    expect(r.isNoop).toBe(false);
+  it("middle band: child of the hovered row, as its FIRST child", () => {
+    const r = target(tree(), open, "D", "B", "inside")!;
+    expect(r).toMatchObject({ parentId: "B", index: 0, isNoop: false });
+    expect(r.projection).toMatchObject({ depth: 2, zone: "inside" });
+    expect(r.slot).toBe(2); // the hovered row is the one highlighted
+    const moved = moveNode(tree(), "D", r.parentId, r.index).tree;
+    expect(findIn(moved, "B")!.children!.map((x) => x.id)).toEqual(["D"]);
   });
 
-  it("clamps the depth to what the neighbours allow (no skipped levels)", () => {
-    const r = target(tree(), open, "B", "B", IND * 5)!;
-    expect(r.projection.depth).toBe(2); // previous (A) depth 1 + 1
-    expect(r.projection.maxDepth).toBe(2);
-    const left = target(tree(), open, "B", "B", -IND * 5)!;
-    // next row C is at depth 1: cannot go shallower than it
-    expect(left.projection.depth).toBe(1);
-    expect(left.projection.minDepth).toBe(1);
+  it("middle band of an expanded parent puts the node before the existing children", () => {
+    const r = target(tree(), open, "A", "C", "inside")!;
+    expect(r).toMatchObject({ parentId: "C", index: 0 });
+    expect(childrenAfter(tree(), "A", r)).toEqual(["A", "c1"]);
   });
 
-  it("the first node always projects to depth 0", () => {
-    const r = target(tree(), open, "p", "p", IND * 3)!;
-    expect(r.projection.depth).toBe(0);
-    expect(r.isNoop).toBe(true);
-  });
-
-  it("a single node cannot nest and an empty list gives null", () => {
-    const only = [n("X")];
-    const r = target(only, [], "X", "X", IND * 2)!;
-    expect(r.projection.depth).toBe(0);
-    expect(r.isNoop).toBe(true);
-    expect(getDropTarget([], "X", 0, 0, IND)).toBeNull();
-  });
-
-  it("the dragged node's descendants cannot receive it (they are not in the list)", () => {
-    // C is dragged with its child hidden: dropping "on" the row after C never lands inside c1
-    const r = target(tree(), open, "C", "D", IND)!;
-    expect(r.parentId).not.toBe("c1");
-    const flat = flattenTree(tree(), new Set(["p"]));
-    expect(flat.map((x) => x.id)).not.toContain("c1");
-    // and moveNode refuses a move into a descendant anyway
-    const bad = moveNode(tree(), "C", "c1", 0);
-    expect(bad.tree).toEqual(tree());
-  });
-
-  it("a disabled node can receive children", () => {
-    const t: TreeNode[] = [n("A", undefined, true), n("B")];
-    const r = target(t, [], "B", "B", IND)!;
-    expect(r.parentId).toBe("A");
-    expect(moveNode(t, "B", r.parentId, r.index).tree[0]!.children).toEqual([n("B")]);
-  });
-
-  it("nesting under a collapsed parent appends after its hidden children", () => {
+  it("middle band of a collapsed parent with hidden children still inserts first", () => {
     const t: TreeNode[] = [n("A", [n("a1"), n("a2")]), n("B")];
-    const r = target(t, [], "B", "B", IND)!;
-    expect(r.parentId).toBe("A");
-    expect(r.index).toBe(2);
+    const r = target(t, [], "B", "A", "inside")!;
+    expect(r).toMatchObject({ parentId: "A", index: 0 });
+    expect(childrenAfter(t, "B", r)).toEqual(["B", "a1", "a2"]);
   });
 
-  it("moving a subtree to another level moves the descendants with it", () => {
-    const r = target(tree(), open, "C", "C", -IND)!;
-    // C is followed by D (depth 1): cannot go to depth 0 here
+  it("middle band of a leaf makes it a parent", () => {
+    const t: TreeNode[] = [n("A"), n("B")];
+    const r = target(t, [], "B", "A", "inside")!;
+    expect(r).toMatchObject({ parentId: "A", index: 0 });
+    expect(moveNode(t, "B", r.parentId, r.index).tree).toEqual([n("A", [n("B")])]);
+  });
+
+  it("lower band of an expanded row drops after its whole visible subtree", () => {
+    const r = target(tree(), open, "A", "C", "after")!;
+    expect(r).toMatchObject({ parentId: "p", index: 2, isNoop: false });
+    // C's row and its child c1 are rows 3-4: the line goes below c1
+    expect(r.slot).toBe(5);
     expect(r.projection.depth).toBe(1);
+    expect(childrenAfter(tree(), "A", r)).toEqual(["B", "C", "A", "D"]);
+  });
+
+  it("upper band of the first row and lower band of the last row work at the margins", () => {
+    const first = target(tree(), open, "q", "p", "before")!;
+    expect(first).toMatchObject({ parentId: null, index: 0, slot: 0 });
+    expect(childrenAfter(tree(), "q", first)).toEqual(["q", "p"]);
+    const last = target(tree(), open, "A", "q", "after")!;
+    expect(last).toMatchObject({ parentId: null, index: 2, slot: 7 });
+    // first / last child of a group
+    const firstChild = target(tree(), open, "D", "A", "before")!;
+    expect(firstChild).toMatchObject({ parentId: "p", index: 0 });
+    const lastChild = target(tree(), open, "A", "D", "after")!;
+    expect(lastChild).toMatchObject({ parentId: "p", index: 3 });
+  });
+
+  it("the horizontal position does not matter: the same row and zone always give the same target", () => {
+    // There is no dx parameter any more: the target is a function of (row, zone) only.
+    const a = target(tree(), open, "B", "D", "before");
+    const b = target(tree(), open, "B", "D", "before");
+    expect(a).toEqual(b);
+  });
+
+  it("a node moved to another level carries its descendants", () => {
     const t: TreeNode[] = [n("A"), n("C", [n("c1", [n("c2")])])];
-    const nested = target(t, ["C", "c1"], "C", "C", IND)!;
-    expect(nested.parentId).toBe("A");
-    const result = moveNode(t, "C", nested.parentId, nested.index).tree;
+    const r = target(t, ["C", "c1"], "C", "A", "inside")!;
+    expect(r.parentId).toBe("A");
+    const result = moveNode(t, "C", r.parentId, r.index).tree;
     const flat = flattenTree(result, new Set(["A", "C", "c1"]));
     expect(flat.map((x) => [x.id, x.depth])).toEqual([
       ["A", 0],
@@ -134,137 +145,146 @@ describe("getDropTarget", () => {
       ["c2", 3],
     ]);
   });
+});
 
-  it("dropping in the original place is a no-op", () => {
-    expect(target(tree(), open, "B", "B", 0)!.isNoop).toBe(true);
-    expect(target(tree(), open, "B", "B", 4)!.isNoop).toBe(true);
-  });
-
-  it("reordering still works: A over C drops after C's subtree", () => {
-    const r = target(tree(), open, "A", "C", 0)!;
-    expect(r).toMatchObject({ parentId: "p", index: 2, isNoop: false });
-  });
-
-  it("a row deeper than the dragged node counts as its ancestor sibling", () => {
-    const r = target(tree(), open, "A", "c1", 0)!;
-    expect(r).toMatchObject({ parentId: "p", index: 2 });
-  });
-
-  it("two drags over the same row give different targets for different dragged nodes", () => {
-    // tree: C1 is C's only child; drag C1 over B, then B over B (same row and steps)
-    const t: TreeNode[] = [n("p", [n("A"), n("B"), n("C", [n("C1")])])];
-    const first = target(t, ["p", "C"], "C1", "B", 0)!;
-    const second = target(t, ["p", "C"], "B", "B", 0)!;
-    expect(first.isNoop).toBe(false);
-    expect(first.parentId).toBe("A"); // before B at C1's depth: last child of A
-    expect(second.isNoop).toBe(true);
-  });
-
-  it("an only child dropped in place is a no-op (dx 0)", () => {
-    const t: TreeNode[] = [n("p", [n("A"), n("C", [n("C1")]), n("D")])];
-    const r = target(t, ["p", "C"], "C1", "C1", 0)!;
-    expect(r).toMatchObject({ parentId: "C", index: 0, isNoop: true });
-    // last child of several: also a no-op
-    const t2: TreeNode[] = [n("p", [n("C", [n("c1"), n("c2")]), n("D")])];
-    expect(target(t2, ["p", "C"], "c2", "c2", 0)!.isNoop).toBe(true);
-    expect(target(t2, ["p", "C"], "c1", "c1", 0)!.isNoop).toBe(true);
-  });
-
-  // r
-  //   p
-  //     A
-  //   docs
-  //     cv
-  //     notes
-  //   misc
-  const docsTree = (): TreeNode[] => [
-    n("p", [n("A")]),
-    n("docs", [n("cv"), n("notes")]),
-    n("misc"),
-  ];
-  const docsOpen = ["p", "docs"];
-
-  it("a root dragged up over a child lands between that parent's children", () => {
-    const r = target(docsTree(), docsOpen, "misc", "notes", 0)!;
-    expect(r).toMatchObject({ parentId: "docs", index: 1, isNoop: false });
-    expect(r.projection.depth).toBe(1);
-  });
-
-  it("a root dragged up over the first child of an open node becomes its first child", () => {
-    const r = target(docsTree(), docsOpen, "misc", "cv", 0)!;
-    expect(r).toMatchObject({ parentId: "docs", index: 0 });
-    // over A, first child of p: the same, whatever the horizontal offset
-    for (const dx of [0, IND, -IND * 3]) {
-      expect(target(docsTree(), docsOpen, "misc", "A", dx)!).toMatchObject({ parentId: "p", index: 0 });
+describe("getDropTarget: invalid targets", () => {
+  it("the dragged node is never a target, in any zone", () => {
+    for (const zone of ["before", "inside", "after"] as const) {
+      expect(target(tree(), open, "B", "B", zone)).toBeNull();
     }
   });
 
-  it("a root dragged down over a child lands after it, inside its parent", () => {
-    const t: TreeNode[] = [n("first"), n("docs", [n("cv"), n("notes")]), n("misc")];
-    const r = target(t, ["docs"], "first", "cv", 0)!;
-    expect(r).toMatchObject({ parentId: "docs", index: 1 });
+  it("a descendant of the dragged node is not a target even when it is in the list", () => {
+    // C is dragged but its child is still in the list (hideActiveChildren = false)
+    for (const zone of ["before", "inside", "after"] as const) {
+      expect(target(tree(), open, "C", "c1", zone, undefined, false)).toBeNull();
+    }
+    // the row after the subtree is valid again
+    expect(target(tree(), open, "C", "D", "before", undefined, false)).not.toBeNull();
   });
 
-  it("the depth is still limited by the neighbours", () => {
-    // between cv and notes (both depth 1) a root cannot go back to depth 0 ...
-    const left = target(docsTree(), docsOpen, "misc", "notes", -IND * 4)!;
-    expect(left).toMatchObject({ parentId: "docs", index: 1 });
-    expect(left.projection.depth).toBe(1);
-    // ... nor deeper than cv + 1 (nested under cv)
-    const right = target(docsTree(), docsOpen, "misc", "notes", IND * 4)!;
-    expect(right).toMatchObject({ parentId: "cv", index: 0 });
-    expect(right.projection.depth).toBe(2);
+  it("the dragged node's descendants are not in the list while dragging", () => {
+    const flat = flattenTree(tree(), new Set(["p"]));
+    expect(flat.map((x) => x.id)).not.toContain("c1");
+    // and moveNode refuses a move into a descendant anyway
+    expect(moveNode(tree(), "C", "c1", 0).tree).toEqual(tree());
   });
 
-  it("returns null for unknown ids and out-of-range rows", () => {
+  it("returns null for unknown ids, out-of-range rows and an empty list", () => {
     const flat = flattenTree(tree(), new Set(open));
-    expect(getDropTarget(flat, "nope", 0, 0, IND)).toBeNull();
-    expect(getDropTarget(flat, "A", 99, 0, IND)).toBeNull();
-    expect(getDropTarget(flat, "A", -1, 0, IND)).toBeNull();
+    expect(getDropTarget(flat, "nope", 0, "before")).toBeNull();
+    expect(getDropTarget(flat, "A", 99, "before")).toBeNull();
+    expect(getDropTarget(flat, "A", -1, "before")).toBeNull();
+    expect(getDropTarget([], "X", 0, "inside")).toBeNull();
+  });
+
+  it("a single node has nothing to drop on", () => {
+    expect(target([n("X")], [], "X", "X", "inside")).toBeNull();
   });
 
   it("does not crash with duplicate ids", () => {
     const t: TreeNode[] = [n("A"), n("A"), n("B")];
     const flat = flattenTree(t, new Set());
-    expect(() => getDropTarget(flat, "A", 2, IND, IND)).not.toThrow();
+    expect(() => getDropTarget(flat, "A", 2, "inside")).not.toThrow();
+  });
+});
+
+describe("getDropTarget: isNoop", () => {
+  it("the lower band of the previous sibling and the upper band of the next one change nothing", () => {
+    expect(target(tree(), open, "B", "A", "after")!.isNoop).toBe(true);
+    expect(target(tree(), open, "B", "C", "before")!.isNoop).toBe(true);
+  });
+
+  it("the first child dropped as first child of its own parent is a no-op", () => {
+    expect(target(tree(), open, "A", "p", "inside")).toMatchObject({ parentId: "p", index: 0, isNoop: true });
+    // any other child is not
+    expect(target(tree(), open, "B", "p", "inside")).toMatchObject({ index: 0, isNoop: false });
+  });
+
+  it("an only child dropped next to its parent's level or inside its parent differently is not a no-op", () => {
+    const t: TreeNode[] = [n("p", [n("A"), n("C", [n("C1")]), n("D")])];
+    expect(target(t, ["p", "C"], "C1", "C", "inside")).toMatchObject({ parentId: "C", index: 0, isNoop: true });
+    expect(target(t, ["p", "C"], "C1", "C", "after")).toMatchObject({ parentId: "p", index: 2, isNoop: false });
+  });
+
+  it("the first root after itself is a no-op, the last root before itself too", () => {
+    expect(target(tree(), open, "p", "q", "before")!.isNoop).toBe(true);
+    expect(target(tree(), open, "q", "p", "after")!.isNoop).toBe(true);
+  });
+
+  it("two drags over the same row and zone give different targets for different dragged nodes", () => {
+    const t: TreeNode[] = [n("p", [n("A"), n("B"), n("C", [n("C1")])])];
+    const first = target(t, ["p", "C"], "C1", "B", "before")!;
+    const second = target(t, ["p", "C"], "B", "A", "after")!;
+    expect(first.isNoop).toBe(false);
+    expect(first.parentId).toBe("p");
+    expect(second.isNoop).toBe(true);
+  });
+});
+
+describe("getDropTarget: disabled nodes", () => {
+  it("a disabled row accepts children and siblings (isDisabled only blocks dragging it)", () => {
+    const t: TreeNode[] = [n("A", undefined, true), n("B")];
+    const child = target(t, [], "B", "A", "inside")!;
+    expect(child.parentId).toBe("A");
+    expect(moveNode(t, "B", child.parentId, child.index).tree[0]!.children).toEqual([n("B")]);
+    expect(target(t, [], "B", "A", "before")).toMatchObject({ parentId: null, index: 0 });
+    expect(target(t, [], "B", "A", "after")).toMatchObject({ parentId: null, index: 1, isNoop: true });
+  });
+});
+
+describe("getDropTarget: maxDepth and the dragged subtree", () => {
+  it("refuses the child zone of a row at the limit, keeps its sibling zones", () => {
+    // c1 is at depth 2; maxDepth 2 -> a leaf may be its sibling but not its child
+    expect(target(tree(), open, "A", "c1", "inside", 2)).toBeNull();
+    expect(target(tree(), open, "A", "c1", "before", 2)).toMatchObject({ parentId: "C" });
+    expect(target(tree(), open, "A", "c1", "after", 2)).toMatchObject({ parentId: "C" });
+  });
+
+  it("accounts for the height of the dragged subtree (getSubtreeHeight)", () => {
+    // C (height 1) cannot become a child of B (depth 1) with maxDepth 2: c1 would be at 3
+    expect(target(tree(), open, "C", "B", "inside", 2)).toBeNull();
+    expect(target(tree(), open, "C", "B", "before", 2)).not.toBeNull();
+    // q has height 0: a child of B is fine
+    expect(target(tree(), open, "q", "B", "inside", 2)).not.toBeNull();
   });
 });
 
 describe("projection cache", () => {
-  it("does not recompute while the row and the indentation steps stay the same", () => {
-    const cache = createProjectionCache<number, string>();
+  it("does not recompute while the row and the zone stay the same", () => {
+    const cache = createProjectionCache<number, string, string>();
     const compute = vi.fn(() => Math.random());
-    const first = cache.get("X", 3, 1, compute);
-    // pointer wiggles by a few pixels: same row, same derived depth
-    expect(cache.get("X", 3, 1, compute)).toBe(first);
-    expect(cache.get("X", 3, 1, compute)).toBe(first);
+    const first = cache.get("X", 3, "inside", compute);
+    // pointer wiggles by a few pixels: same row, same zone
+    expect(cache.get("X", 3, "inside", compute)).toBe(first);
+    expect(cache.get("X", 3, "inside", compute)).toBe(first);
     expect(compute).toHaveBeenCalledTimes(1);
   });
 
-  it("recomputes when the row or the steps change", () => {
-    const cache = createProjectionCache<string, string>();
+  it("recomputes when the row or the zone change", () => {
+    const cache = createProjectionCache<string, string, string>();
     const compute = vi.fn(() => "x");
-    cache.get("X", 3, 1, compute);
-    cache.get("X", 4, 1, compute);
-    cache.get("X", 4, 2, compute);
-    cache.get("X", 4, 2, compute);
+    cache.get("X", 3, "before", compute);
+    cache.get("X", 4, "before", compute);
+    cache.get("X", 4, "inside", compute);
+    cache.get("X", 4, "inside", compute);
     expect(compute).toHaveBeenCalledTimes(3);
   });
 
   it("caches a null result too", () => {
-    const cache = createProjectionCache<null, string>();
+    const cache = createProjectionCache<null, string, string>();
     const compute = vi.fn(() => null);
-    cache.get("X", 0, 0, compute);
-    cache.get("X", 0, 0, compute);
+    cache.get("X", 0, "after", compute);
+    cache.get("X", 0, "after", compute);
     expect(compute).toHaveBeenCalledTimes(1);
   });
 
-  it("does not share a result between two drags of different nodes (same row, same steps)", () => {
-    const cache = createProjectionCache<string, string>();
-    expect(cache.get("C1", 2, 0, () => "result for C1")).toBe("result for C1");
-    // a later drag of another node over the same row and steps must be computed afresh
-    expect(cache.get("B", 2, 0, () => "result for B")).toBe("result for B");
+  it("does not share a result between two drags of different nodes (same row, same zone)", () => {
+    const cache = createProjectionCache<string, string, string>();
+    expect(cache.get("C1", 2, "before", () => "result for C1")).toBe("result for C1");
+    // a later drag of another node over the same row and zone must be computed afresh
+    expect(cache.get("B", 2, "before", () => "result for B")).toBe("result for B");
     // and coming back to the first node does not resurrect the stale entry either
-    expect(cache.get("C1", 2, 0, () => "fresh C1")).toBe("fresh C1");
+    expect(cache.get("C1", 2, "before", () => "fresh C1")).toBe("fresh C1");
   });
 });

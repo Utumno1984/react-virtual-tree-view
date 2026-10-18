@@ -61,9 +61,9 @@ function run(tree: TreeNode[], maxDepth: number, rand: () => number, onMove: (d:
     hidden.delete(active.id);
     const flat = flattenTree(tree, hidden);
     const over = Math.floor(rand() * flat.length);
-    const dx = Math.round((rand() * 10 - 3) * 24);
+    const zone = (["before", "inside", "after"] as const)[Math.floor(rand() * 3)]!;
     const height = getSubtreeHeight(findNodeById(tree, active.id)!);
-    const target = getDropTarget(flat, active.id, over, dx, 24, maxDepth, height);
+    const target = getDropTarget(flat, active.id, over, zone, maxDepth, height);
     if (!target || target.isNoop) continue;
     const res = moveNode(tree, active.id, target.parentId, target.index);
     const d = depthOf(res.tree, active.id);

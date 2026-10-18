@@ -62,7 +62,8 @@ describe("DraggableTreeView: drop that nests under a collapsed node", () => {
     );
     expect(onStateChange).not.toHaveBeenCalled();
 
-    // Press on row B (second row), then move one indentation (24px) to the right.
+    // Press on row B (second row), then move the pointer to the middle of row A (first row):
+    // "becomes a child of A".
     act(() =>
       dnd.current!.onDragStart({
         active: { id: "B" },
@@ -70,7 +71,7 @@ describe("DraggableTreeView: drop that nests under a collapsed node", () => {
       }),
     );
     act(() => {
-      document.dispatchEvent(new MouseEvent("pointermove", { clientX: 24, clientY: 40 }));
+      document.dispatchEvent(new MouseEvent("pointermove", { clientX: 24, clientY: 16 }));
     });
     act(() => dnd.current!.onDragEnd({ active: { id: "B" } }));
 

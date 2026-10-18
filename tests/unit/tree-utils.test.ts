@@ -4,9 +4,8 @@ import {
   calculateNewParent,
   findDuplicateIds,
   flattenTree,
-  findNodeById,
   getAncestorIds,
-  getDropTarget,
+  getDropZone,
   getProjection,
   getSubtreeHeight,
   moveNode,
@@ -33,7 +32,6 @@ const sample = (): TreeNode[] => [
   n("g"),
 ];
 const ALL = ["a", "b", "c", "d", "e", "f", "g"];
-const IND = 20;
 
 function collectIds(nodes: TreeNode[], out: (string | number)[] = []) {
   for (const x of nodes) {
@@ -100,161 +98,126 @@ describe("getSubtreeHeight", () => {
 describe("getProjection", () => {
   const flat = () => flattenTree(sample(), new Set(ALL));
 
-  it("keeps the depth with no horizontal offset", () => {
-    expect(getProjection(flat(), "g", "g", 0, IND)).toMatchObject({
-      depth: 0,
-      parentId: null,
+  // The horizontal-offset tests of the previous model (indent by round(dx / indentation),
+  // neighbour-limited depth, slot skipping and the "known limit" overshoot cases) are replaced by
+  // zone tests: the depth is now fully determined by the hovered row and the zone (#63).
+  it("before: sibling of the hovered row, same depth and parent", () => {
+    expect(getProjection(flat(), "g", "d", "before")).toMatchObject({
+      depth: 1,
+      parentId: "a",
+      zone: "before",
       clamped: false,
     });
+    expect(getProjection(flat(), "g", "c", "before")).toMatchObject({ depth: 2, parentId: "b" });
   });
 
-  it("indents by round(dx / indentation), limited by the previous node", () => {
-    expect(getProjection(flat(), "g", "g", IND, IND)).toMatchObject({
-      depth: 1,
-      parentId: "e",
-      maxDepth: 2,
-      minDepth: 0,
+  it("after: sibling of the hovered row, same depth and parent", () => {
+    expect(getProjection(flat(), "g", "b", "after")).toMatchObject({ depth: 1, parentId: "a" });
+    expect(getProjection(flat(), "c", "e", "after")).toMatchObject({ depth: 0, parentId: null });
+  });
+
+  it("inside: child of the hovered row, one level deeper", () => {
+    expect(getProjection(flat(), "g", "e", "inside")).toMatchObject({ depth: 1, parentId: "e" });
+    expect(getProjection(flat(), "a", "g", "inside")).toMatchObject({ depth: 1, parentId: "g" });
+    // minDepth / maxDepth are kept for compatibility and equal to the depth
+    expect(getProjection(flat(), "g", "c", "inside")).toMatchObject({
+      depth: 3,
+      minDepth: 3,
+      maxDepth: 3,
+      parentId: "c",
     });
-    expect(getProjection(flat(), "g", "g", 2 * IND, IND)).toMatchObject({ depth: 2, parentId: "f" });
-    expect(getProjection(flat(), "g", "g", 10 * IND, IND)).toMatchObject({ depth: 2, parentId: "f" });
-    expect(getProjection(flat(), "g", "g", 0.4 * IND, IND)!.depth).toBe(0);
-    expect(getProjection(flat(), "g", "g", 0.6 * IND, IND)!.depth).toBe(1);
   });
 
-  it("cannot go below the minimum imposed by the next node", () => {
-    // moving "g" over "c": it lands before "c" (depth 2)
-    const p = getProjection(flat(), "g", "c", -5 * IND, IND)!;
-    expect(p.minDepth).toBe(2);
-    expect(p.depth).toBe(2);
-    expect(p.parentId).toBe("b");
-  });
-
-  it("excludes the descendants of the active node", () => {
-    // "a" dropped over "e": lands between e and f, so it must nest under e
-    const p = getProjection(flat(), "a", "e", 0, IND)!;
-    expect(p).toMatchObject({ depth: 1, minDepth: 1, maxDepth: 1, parentId: "e" });
-  });
-
-  it("returns null for unknown ids", () => {
-    expect(getProjection(flat(), "zzz", "g", 0, IND)).toBeNull();
-    expect(getProjection(flat(), "g", "zzz", 0, IND)).toBeNull();
-    expect(getProjection([], "g", "g", 0, IND)).toBeNull();
-  });
-
-  it("single node: never deeper than 0", () => {
-    const f = flattenTree([n("x")], new Set());
-    expect(getProjection(f, "x", "x", 5 * IND, IND)).toMatchObject({ depth: 0, parentId: null });
+  it("returns null for unknown ids, the dragged node itself and its descendants", () => {
+    expect(getProjection(flat(), "zzz", "g", "before")).toBeNull();
+    expect(getProjection(flat(), "g", "zzz", "before")).toBeNull();
+    expect(getProjection([], "g", "g", "before")).toBeNull();
+    expect(getProjection(flat(), "g", "g", "inside")).toBeNull();
+    // "b" and "c" belong to the dragged subtree of "a"
+    expect(getProjection(flat(), "a", "b", "inside")).toBeNull();
+    expect(getProjection(flat(), "a", "c", "after")).toBeNull();
   });
 
   it("has no limit and clamped=false without maxDepth", () => {
-    const p = getProjection(flat(), "g", "g", 2 * IND, IND, undefined)!;
+    const p = getProjection(flat(), "g", "c", "inside", undefined)!;
     expect(p.clamped).toBe(false);
-    expect(p.depth).toBe(2);
+    expect(p.depth).toBe(3);
   });
 
-  it("does not flag clamped when within maxDepth", () => {
-    const p = getProjection(flat(), "g", "g", 2 * IND, IND, 2)!;
-    expect(p).toMatchObject({ depth: 2, clamped: false });
+  it("with maxDepth: inside needs row.depth + 1 + height <= maxDepth", () => {
+    expect(getProjection(flat(), "g", "f", "inside", 2)).toMatchObject({ depth: 2, parentId: "f" });
+    expect(getProjection(flat(), "g", "f", "inside", 1)).toBeNull();
+    // maxDepth 0: nothing can become a child
+    expect(getProjection(flat(), "g", "e", "inside", 0)).toBeNull();
   });
 
-  it("clamps to maxDepth - height and flags it", () => {
-    const p = getProjection(flat(), "g", "g", 2 * IND, IND, 1)!;
-    expect(p).toMatchObject({ depth: 1, clamped: true, maxDepth: 1, parentId: "e" });
-  });
-
-  it("maxDepth 0 forces everything to the root", () => {
-    const p = getProjection(flat(), "g", "g", 3 * IND, IND, 0)!;
-    expect(p).toMatchObject({ depth: 0, clamped: true, parentId: null });
+  it("with maxDepth: before / after need row.depth + height <= maxDepth", () => {
+    // sibling of "c" (depth 2) is valid with maxDepth 2, not with 1
+    expect(getProjection(flat(), "g", "c", "before", 2)).toMatchObject({ depth: 2 });
+    expect(getProjection(flat(), "g", "c", "after", 1)).toBeNull();
+    // a root sibling is always valid, even with maxDepth 0
+    expect(getProjection(flat(), "c", "g", "after", 0)).toMatchObject({ depth: 0, parentId: null });
   });
 
   it("counts the height of the dragged subtree", () => {
-    // "e" has height 1: with maxDepth 1 it can only sit at depth 0
-    const p = getProjection(flat(), "e", "e", IND, IND, 1)!;
-    expect(p.depth).toBe(0);
-    // projected depth 1 + height 1 = 2 > 1
-    expect(p.clamped).toBe(true);
-    // same drag with maxDepth 2 is fine
-    expect(getProjection(flat(), "e", "e", IND, IND, 2)!).toMatchObject({ depth: 1, clamped: false });
+    // "e" has height 1: with maxDepth 1 it can be a sibling of a root, not a child of one
+    expect(getProjection(flat(), "e", "g", "after", 1)).toMatchObject({ depth: 0 });
+    expect(getProjection(flat(), "e", "g", "inside", 1)).toBeNull();
+    // with maxDepth 2 the child zone is fine
+    expect(getProjection(flat(), "e", "g", "inside", 2)).toMatchObject({ depth: 1, parentId: "g" });
+    // sibling of a depth-1 row would put "f" under "e"'s level 2: refused with maxDepth 1
+    expect(getProjection(flat(), "e", "d", "before", 1)).toBeNull();
   });
 
-  it("subtree taller than maxDepth: depth stays at the minimum, clamped, not rejected", () => {
-    // "a" has height 2, maxDepth 1 -> maxDepth - h = -1
-    const p = getProjection(flat(), "a", "a", 0, IND, 1)!;
-    expect(p).toMatchObject({ depth: 0, clamped: true, parentId: null });
+  it("subtree taller than maxDepth: only the root level stays valid", () => {
+    // "a" has height 2, maxDepth 1 -> allowed depth max(0, -1) = 0
+    expect(getProjection(flat(), "a", "g", "after", 1)).toMatchObject({ depth: 0, parentId: null });
+    expect(getProjection(flat(), "a", "g", "inside", 1)).toBeNull();
   });
 
-  it("when maxDepth - h is below the minimum, depth stays at the minimum", () => {
-    // "g" over "c" needs depth >= 2, but maxDepth 1 allows at most 1
-    const p = getProjection(flat(), "g", "c", 0, IND, 1)!;
-    expect(p).toMatchObject({ depth: 2, minDepth: 2, clamped: true });
-  });
-
-  it("non-conforming initial data: a drop just above a row already deeper than maxDepth is flagged clamped, the slot is not moved past it (known limit, #26)", () => {
-    // a > b > c > [d, e] is depth 3 with maxDepth 2; "l" is dropped between d and e.
-    const tree = [n("a", [n("b", [n("c", [n("d"), n("e")])])]), n("l")];
-    const deep = flattenTree(tree, new Set(["a", "b", "c"]));
-    const p = getProjection(deep, "l", "e", 0, IND, 2)!;
-    // The row below ("e") is already deeper than maxDepth, so the slot is not moved past it
-    // and depth 3 > maxDepth. `clamped` is true but is also true for ordinary cuts; the
-    // overshoot is detected with depth + subtree height > maxDepth (here 3 + 0 > 2).
-    expect(p).toMatchObject({ depth: 3, minDepth: 3, parentId: "c", clamped: true });
-    // Same result through getDropTarget, and the moved tree really is beyond the limit.
-    const target = getDropTarget(deep, "l", deep.findIndex((r) => r.id === "e"), 0, IND, 2, 0)!;
-    expect(target.projection).toMatchObject({ depth: 3, minDepth: 3, parentId: "c", clamped: true });
-    const moved = moveNode(tree, "l", target.parentId, target.index).tree;
-    expect(getAncestorIds(moved, "l").length + 0 > 2).toBe(true);
-  });
-
-  it("non-conforming initial data: the overshoot also happens when dropping above a conforming row (the slot skips rows and stops above a too-deep one) (#26)", () => {
-    // a > b > c > x > y, plus l > m (l has height 1). maxDepth 2 -> l may only be at depth <= 1.
-    // Dropped above "c" (depth 2, conforming): c is too deep for l, so the slot skips it;
-    // x (depth 3) is deeper than maxDepth, so it is not skipped: the slot stops between c and x.
-    const t = [n("a", [n("b", [n("c", [n("x", [n("y")])])])]), n("l", [n("m")])];
-    const flat = flattenTree(t, new Set(["a", "b", "c", "x"]));
-    const p = getProjection(flat, "l", "c", 0, IND, 2)!;
-    expect(p).toMatchObject({ depth: 3, minDepth: 3, parentId: "c", clamped: true });
-    const target = getDropTarget(flat, "l", flat.findIndex((r) => r.id === "c"), 0, IND, 2)!;
-    expect(target.projection).toMatchObject({ depth: 3, minDepth: 3, parentId: "c", clamped: true });
-    const moved = moveNode(t, "l", target.parentId, target.index).tree;
-    expect(getAncestorIds(moved, "l").length + getSubtreeHeight(findNodeById(moved, "l")!) > 2).toBe(true);
-  });
-
-  it("a dragged subtree already taller than maxDepth exceeds the limit wherever it is dropped (#26)", () => {
-    const t = [n("a"), n("l", [n("m", [n("o")])])];
-    const flat = flattenTree(t, new Set());
-    const p = getProjection(flat, "l", "a", 0, IND, 1)!;
-    expect(p.depth + getSubtreeHeight(t[1]!)).toBeGreaterThan(1);
-    expect(p.clamped).toBe(true);
-  });
-
-  it("does not treat disabled nodes differently", () => {
+  it("does not treat disabled nodes differently: they accept children and siblings", () => {
     const tree = [n("a", [], { isDisabled: true }), n("b")];
     const f = flattenTree(tree, new Set());
-    expect(getProjection(f, "b", "b", IND, IND)).toMatchObject({ depth: 1, parentId: "a" });
+    expect(getProjection(f, "b", "a", "inside")).toMatchObject({ depth: 1, parentId: "a" });
+    expect(getProjection(f, "b", "a", "before")).toMatchObject({ depth: 0, parentId: null });
+  });
+});
+
+describe("getDropZone", () => {
+  it("splits a row into 25% / 50% / 25% bands", () => {
+    expect(getDropZone(0)).toBe("before");
+    expect(getDropZone(0.24)).toBe("before");
+    expect(getDropZone(0.25)).toBe("inside");
+    expect(getDropZone(0.5)).toBe("inside");
+    expect(getDropZone(0.74)).toBe("inside");
+    expect(getDropZone(0.75)).toBe("after");
+    expect(getDropZone(0.99)).toBe("after");
+  });
+
+  it("treats positions outside the row as the nearest band", () => {
+    expect(getDropZone(-3)).toBe("before");
+    expect(getDropZone(7)).toBe("after");
   });
 });
 
 describe("calculateNewParent", () => {
   const flat = flattenTree(sample(), new Set(ALL));
 
-  it("returns null for depth 0 and for the first position", () => {
-    expect(calculateNewParent(flat, 3, 0)).toBeNull();
-    expect(calculateNewParent(flat, 0, 2)).toBeNull();
+  it("is the row itself for inside", () => {
+    expect(calculateNewParent(flat, 0, "inside")).toBe("a");
+    expect(calculateNewParent(flat, 2, "inside")).toBe("c");
   });
 
-  it("returns the previous node when going deeper", () => {
-    expect(calculateNewParent(flat, 3, 3)).toBe("c");
-    expect(calculateNewParent(flat, 6, 1)).toBe("e");
+  it("is the row's own parent for before and after (null at the root)", () => {
+    expect(calculateNewParent(flat, 2, "before")).toBe("b");
+    expect(calculateNewParent(flat, 3, "after")).toBe("a");
+    expect(calculateNewParent(flat, 0, "before")).toBeNull();
+    expect(calculateNewParent(flat, 6, "after")).toBeNull();
   });
 
-  it("returns the previous parent at the same depth", () => {
-    expect(calculateNewParent(flat, 3, 2)).toBe("b");
-  });
-
-  it("looks back for the closest node at the requested depth", () => {
-    // before index 4 ("e"): c(2) d(1) -> depth 1 parent is "a"
-    expect(calculateNewParent(flat, 4, 1)).toBe("a");
-    expect(calculateNewParent(flat, 4, 0)).toBeNull();
+  it("is null for an out-of-range row", () => {
+    expect(calculateNewParent(flat, 99, "inside")).toBeNull();
+    expect(calculateNewParent(flat, -1, "before")).toBeNull();
   });
 });
 
@@ -274,7 +237,7 @@ describe("findDuplicateIds", () => {
     expect(() => flattenTree(tree, new Set(["a"]))).not.toThrow();
     expect(() => moveNode(tree, "a", "a", 0)).not.toThrow();
     expect(() => getAncestorIds(tree, "a")).not.toThrow();
-    expect(() => getProjection(flattenTree(tree, new Set(["a"])), "a", "a", 0, IND)).not.toThrow();
+    expect(() => getProjection(flattenTree(tree, new Set(["a"])), "a", "a", "before")).not.toThrow();
   });
 });
 
@@ -395,7 +358,7 @@ describe("integration and performance", () => {
     const flat = flattenTree(tree, all);
     const last = flat[flat.length - 1]!;
     const first = flat[0]!;
-    for (let i = 0; i < 20; i++) getProjection(flat, last.id, first.id, IND, IND, 6);
+    for (let i = 0; i < 20; i++) getProjection(flat, last.id, first.id, "inside", 6);
     const elapsed = performance.now() - start;
     expect(flat).toHaveLength(5000);
     expect(elapsed).toBeLessThan(500);
