@@ -883,6 +883,12 @@ function TreeViewInner<T = unknown>(
               },
               onContextMenu: contextMenu
                 ? (event: MouseEvent<HTMLDivElement>) => {
+                    // The long-press that starts a touch drag also makes Chrome Android send a
+                    // contextmenu: neither the library menu nor the native one may open mid-drag.
+                    if (dnd &&(dnd.touchGesture || dnd.activeId !== null)) {
+                      event.preventDefault();
+                      return;
+                    }
                     // The key already opened the menu; the browser may add its own contextmenu event.
                     if (
                       menu?.source === "keyboard" &&

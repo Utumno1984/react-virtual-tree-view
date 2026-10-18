@@ -120,12 +120,97 @@ test.describe("DraggableTreeView touch", () => {
 
   const selectedText = (page: Page) => page.evaluate(() => window.getSelection()?.toString() ?? "");
 
-  test("draggable rows are not text-selectable, the disabled one is", async ({ page }) => {
+  test("rows are text-selectable at rest, not selectable only during a touch gesture", async ({
+    page,
+  }) => {
     await page.goto(story);
     await expect(node(page, "misc")).toBeVisible();
     const sel = (id: string) => node(page, id).evaluate((el) => getComputedStyle(el).userSelect);
+    expect(await sel("A")).not.toBe("none");
+    const cdp = await page.context().newCDPSession(page);
+    const start = await center(page, "A");
+
+    await touch(cdp, "touchStart", start);
     expect(await sel("A")).toBe("none");
-    expect(await sel("D")).not.toBe("none");
+    expect(await sel("B")).toBe("none"); // neighbouring draggable rows too
+    expect(await sel("D")).not.toBe("none"); // disabled node: nothing to drag
+    await page.waitForTimeout(400);
+    await touch(cdp, "touchMove", { x: start.x, y: start.y + 6 });
+    expect(await sel("A")).toBe("none");
+    await touch(cdp, "touchEnd");
+    await expect.poll(() => sel("A")).not.toBe("none");
+  });
+
+  test("a swipe or a quick tap does not leave the rows unselectable", async ({ page }) => {
+    await page.goto(longStory());
+    await expect(node(page, "n0")).toBeVisible();
+    const cdp = await page.context().newCDPSession(page);
+    const box = await page.getByRole("tree").boundingBox();
+    if (!box) throw new Error("tree not visible");
+    const row = page.getByRole("treeitem").first();
+    const sel = () => row.evaluate((el) => getComputedStyle(el).userSelect);
+
+    await swipeUp(cdp, { x: box.x + box.width / 2, y: box.y + box.height - 40 }, 300);
+    await expect.poll(() => scrollTop(page)).toBeGreaterThan(50);
+    await expect.poll(sel).not.toBe("none");
+    const rb = await row.boundingBox();
+    if (!rb) throw new Error("row not visible");
+    await touch(cdp, "touchStart", { x: rb.x + rb.width / 2, y: rb.y + rb.height / 2 });
+    await touch(cdp, "touchEnd");
+    await expect.poll(sel).not.toBe("none");
+  });
+
+  test("the mouse keeps text selection on draggable rows", async ({ page }) => {
+    await page.goto(story);
+    await expect(node(page, "misc")).toBeVisible();
+    const start = await center(page, "A");
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    expect(await node(page, "A").evaluate((el) => getComputedStyle(el).userSelect)).not.toBe("none");
+    await page.mouse.up();
+  });
+
+  test("a contextmenu fired by the long-press during a touch drag opens no menu", async ({
+    page,
+  }) => {
+    await page.goto(
+      "/iframe.html?id=treeview-contextmenu--draggable&viewMode=story",
+    );
+    const target = page.locator('[data-node-id="cv"]');
+    await expect(target).toBeVisible();
+    const cdp = await page.context().newCDPSession(page);
+    const start = await center(page, "cv");
+
+    const fireContextMenu = () =>
+      target.evaluate((el) =>
+        el.dispatchEvent(
+          new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }),
+        ),
+      );
+    // while the long-press is still pending (before the drag activates)
+    await touch(cdp, "touchStart", start);
+    await page.waitForTimeout(60);
+    await fireContextMenu();
+    await page.waitForTimeout(40);
+    // no retrying expect here: the drag start would close a wrongly opened menu a bit later
+    expect(await page.getByRole("menu").count()).toBe(0);
+    await page.waitForTimeout(400);
+    await touch(cdp, "touchMove", { x: start.x, y: start.y + 6 });
+    await expect(page.locator("[data-drag-overlay]")).toBeVisible();
+    // while the drag is active: what Chrome Android sends after ~500 ms of press
+    await fireContextMenu();
+    await page.waitForTimeout(40);
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    await touch(cdp, "touchEnd");
+    await expect(page.getByRole("menu")).toHaveCount(0);
+
+    // outside of a drag the normal contextmenu still opens the menu
+    await target.evaluate((el) =>
+      el.dispatchEvent(
+        new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }),
+      ),
+    );
+    await expect(page.getByRole("menu")).toBeVisible();
   });
 
   test("the overlay stays visible during the whole long-press gesture and no text gets selected", async ({
