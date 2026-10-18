@@ -115,12 +115,16 @@ function DraggableDemo({
           }`
         }
         renderIcon={Icon}
-        renderDropIndicator={() => (
-          <div className="-mt-px flex items-center">
-            <span className="h-2 w-2 rounded-full bg-blue-500" />
-            <span className="h-0.5 flex-1 bg-blue-500" />
-          </div>
-        )}
+        renderDropIndicator={(projection) =>
+          projection.zone === "inside" ? (
+            <div className="h-full rounded border-2 border-blue-500 bg-blue-500/10" />
+          ) : (
+            <div className="-mt-px flex items-center">
+              <span className="h-2 w-2 rounded-full bg-blue-500" />
+              <span className="h-0.5 flex-1 bg-blue-500" />
+            </div>
+          )
+        }
       />
       <pre data-testid="last-event" className="rounded bg-gray-50 p-2 text-xs text-gray-700">
         {lastEvent ? `onTreeChange ${JSON.stringify(lastEvent)}` : "onTreeChange: none yet"}
@@ -147,15 +151,16 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 /**
- * Drag a row onto another to reorder; move the pointer right to nest under the previous row
- * and left to move up a level. The indicator shows the projected depth live; the last
- * `onTreeChange` event is logged below.
+ * Drag a row over another: the upper quarter of the target row drops it as the previous
+ * sibling (line above), the middle half makes it the first child (the whole row is
+ * highlighted), the lower quarter makes it the next sibling (line below). The indicator shows
+ * the result live; the last `onTreeChange` event is logged below.
  */
 export const Draggable: Story = {
   args: { initialData: initialTree, defaultExpandedIds: ["p", "C", "docs"] },
 };
 
-/** "Documents" and "Charlie" start collapsed: nesting a node under them expands them on drop. */
+/** "Documents" and "Charlie" start collapsed: dropping on the middle of their row expands them on drop. */
 export const NestUnderCollapsed: Story = {
   args: { initialData: initialTree, defaultExpandedIds: ["p"] },
 };

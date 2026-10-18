@@ -54,15 +54,16 @@ function MaxDepthDemo({ maxDepth }: { maxDepth?: number }) {
           }`
         }
         renderIcon={Icon}
-        renderDropIndicator={(projection) => (
-          <div
-            className={`-mt-px flex items-center ${projection.clamped ? "text-orange-500" : "text-blue-500"}`}
-          >
-            <span className="h-2 w-2 rounded-full bg-current" />
-            <span className="h-0.5 flex-1 bg-current" />
-            {projection.clamped ? <span className="ml-1 text-xs">max depth</span> : null}
-          </div>
-        )}
+        renderDropIndicator={(projection) =>
+          projection.zone === "inside" ? (
+            <div className="h-full rounded border-2 border-blue-500 bg-blue-500/10" />
+          ) : (
+            <div className="-mt-px flex items-center text-blue-500">
+              <span className="h-2 w-2 rounded-full bg-current" />
+              <span className="h-0.5 flex-1 bg-current" />
+            </div>
+          )
+        }
       />
       <pre data-testid="last-event" className="rounded bg-gray-50 p-2 text-xs text-gray-700">
         {lastEvent ? `onTreeChange ${JSON.stringify(lastEvent)}` : "onTreeChange: none yet"}
@@ -88,9 +89,9 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 /**
- * `maxDepth={2}`: drag a node to the right to nest it; the projection stops at depth 2 (or
- * lower if the dragged node has children) and the indicator turns orange with
- * `data-depth-clamped="true"`. The drop is never refused, it lands at the cut depth.
+ * `maxDepth={2}`: the middle of a row ("becomes a child") is refused (no indicator) when the
+ * node, with its own subtree, would end up deeper than 2; the upper and lower quarters of the
+ * same row stay valid as long as they fit.
  */
 export const Default: Story = {
   args: { maxDepth: 2 },
