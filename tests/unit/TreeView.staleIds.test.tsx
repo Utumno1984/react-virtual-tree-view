@@ -17,7 +17,11 @@ const treeA = (): TreeNode[] => [
     label: "Documents",
     children: [
       { id: "a-cv", label: "CV" },
-      { id: "a-deep", label: "Deep", children: [{ id: "a-leaf", label: "Leaf" }] },
+      {
+        id: "a-deep",
+        label: "Deep",
+        children: [{ id: "a-leaf", label: "Leaf" }],
+      },
     ],
   },
   { id: "a-readme", label: "README" },
@@ -28,7 +32,11 @@ const treeB = (): TreeNode[] => [
 ];
 // Same ids as treeA, other labels, some nodes gone.
 const treeAv2 = (): TreeNode[] => [
-  { id: "a-docs", label: "Documents v2", children: [{ id: "a-cv", label: "CV v2" }] },
+  {
+    id: "a-docs",
+    label: "Documents v2",
+    children: [{ id: "a-cv", label: "CV v2" }],
+  },
   { id: "a-readme", label: "README v2" },
 ];
 
@@ -201,10 +209,18 @@ describe.each([
   it("5. the next user toggle reports only ids that exist", () => {
     const onExpandedChange = vi.fn();
     const { rerender } = render(
-      <Component data={treeA()} defaultExpandedIds={["a-docs", "a-deep"]} onExpandedChange={onExpandedChange} />,
+      <Component
+        data={treeA()}
+        defaultExpandedIds={["a-docs", "a-deep"]}
+        onExpandedChange={onExpandedChange}
+      />,
     );
     rerender(
-      <Component data={treeB()} defaultExpandedIds={["a-docs", "a-deep"]} onExpandedChange={onExpandedChange} />,
+      <Component
+        data={treeB()}
+        defaultExpandedIds={["a-docs", "a-deep"]}
+        onExpandedChange={onExpandedChange}
+      />,
     );
     fireEvent.click(row("b-dir").querySelector("[data-toggle]")!);
     expect(onExpandedChange).toHaveBeenLastCalledWith(["b-dir"]);
