@@ -136,28 +136,19 @@ test.describe("DraggableTreeView touch", () => {
     const cdp = await page.context().newCDPSession(page);
     const start = await center(page, "A");
     const end = await center(page, "C");
-    // a native selection attempt, as a mobile browser would do after the long-press
-    await page.evaluate(() => {
-      (window as unknown as { __selectStartPrevented: boolean[] }).__selectStartPrevented = [];
-      document.addEventListener("selectstart", (e) =>
-        queueMicrotask(() =>
-          (window as unknown as { __selectStartPrevented: boolean[] }).__selectStartPrevented.push(
-            e.defaultPrevented,
-          ),
-        ),
-      );
-    });
-
     await longPressAndMove(page, cdp, start, [{ x: start.x, y: start.y + 6 }]);
     await expect(page.locator("[data-drag-overlay]")).toBeVisible();
     for (const p of lerp({ x: start.x, y: start.y + 6 }, end, 10)) {
       await touch(cdp, "touchMove", p);
       await expect(page.locator("[data-drag-overlay]")).toBeVisible();
     }
-    await page.evaluate(() => document.body.dispatchEvent(new Event("selectstart", { cancelable: true })));
-    expect(
-      await page.evaluate(() => (window as unknown as { __selectStartPrevented: boolean[] }).__selectStartPrevented),
-    ).toEqual([true]);
+    // a native selection attempt, as a mobile browser would do, is cancelled during the drag
+    const prevented = await page.evaluate(() => {
+      const e = new Event("selectstart", { bubbles: true, cancelable: true });
+      document.body.dispatchEvent(e);
+      return e.defaultPrevented;
+    });
+    expect(prevented).toBe(true);
     expect(await selectedText(page)).toBe("");
     await touch(cdp, "touchEnd");
     await expect(log(page)).toContainText('"nodeId":"A"');
