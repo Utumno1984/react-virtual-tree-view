@@ -233,6 +233,20 @@ describe("onSearchResult", () => {
     expect(last(onSearchResult).terms).toHaveLength(2);
   });
 
+  it("reports one entry per passed term: [beta] -> [beta, ''] recomputes, [beta, ''] -> [beta, '  '] does not", () => {
+    const onSearchResult = vi.fn();
+    const { rerender } = render(
+      <TreeView data={tree} searchTerms={["beta"]} onSearchResult={onSearchResult} />,
+    );
+    expect(last(onSearchResult).terms).toHaveLength(1);
+    rerender(<TreeView data={tree} searchTerms={["beta", ""]} onSearchResult={onSearchResult} />);
+    expect(last(onSearchResult).terms).toHaveLength(2);
+    expect(last(onSearchResult).terms[1]!.active).toBe(false);
+    const calls = onSearchResult.mock.calls.length;
+    rerender(<TreeView data={tree} searchTerms={["beta", "  "]} onSearchResult={onSearchResult} />);
+    expect(onSearchResult).toHaveBeenCalledTimes(calls);
+  });
+
   it("is not duplicated by StrictMode", () => {
     const onSearchResult = vi.fn();
     render(

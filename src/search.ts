@@ -236,7 +236,7 @@ export function hasActiveTerms(searchTerms: ReadonlyArray<string> | undefined | 
  * `compileSearch` even when `searchTerms` is a new array on every render. Case changes give a
  * new key (as they do for a plain `searchQuery`), surrounding spaces do not.
  * `null` when nothing is searched. With terms the key is a JSON encoding of the
- * `[index, term]` pairs (unambiguous); with a plain query it is the trimmed query. The mode is
+ * `[length, [index, term] pairs]` (unambiguous; the length keeps inactive entries in the identity); with a plain query it is the trimmed query. The mode is
  * never read back from the key (see `hasActiveTerms`): callers memoizing on it add that flag.
  */
 export function searchKey(
@@ -250,7 +250,9 @@ export function searchKey(
       const term = normalizeQuery(raw);
       if (term !== "") pairs.push([i, term]);
     });
-    return JSON.stringify(pairs);
+    // The length is part of the key: `onSearchResult` reports one entry per passed term
+    // (inactive ones included), so ["a"] and ["a", ""] are different searches.
+    return JSON.stringify([(searchTerms as ReadonlyArray<string>).length, pairs]);
   }
   const q = normalizeQuery(searchQuery);
   return q === "" ? null : q;

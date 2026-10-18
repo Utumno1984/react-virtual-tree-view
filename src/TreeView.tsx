@@ -154,6 +154,7 @@ function TreeViewInner<T = unknown>(
   // User toggles made while searching (explained below); declared here to be reconciled too.
   const [searchToggles, setSearchToggles] = useState<{
     query: string;
+    termsMode: boolean;
     toggled: ReadonlySet<TreeId>;
   } | null>(null);
   let uncontrolledSelectedId = uncontrolledSelectedState;
@@ -183,7 +184,13 @@ function TreeViewInner<T = unknown>(
         keptToggles ??= new Set(searchToggles.toggled);
         keptToggles.delete(id);
       }
-      if (keptToggles) setSearchToggles({ query: searchToggles.query, toggled: keptToggles });
+      if (keptToggles) {
+        setSearchToggles({
+          query: searchToggles.query,
+          termsMode: searchToggles.termsMode,
+          toggled: keptToggles,
+        });
+      }
     }
   }
   // `selectedId={undefined}` means uncontrolled; `null` is a controlled "nothing selected".
@@ -292,10 +299,15 @@ function TreeViewInner<T = unknown>(
   // (relative to the auto-expanded ones), tied to the normalized query: it survives a new
   // `data` reference, is dropped when the query really changes, and `expanded` is left
   // untouched, so clearing the query restores it exactly.
-  if (searchToggles && searchToggles.query !== normalizedQuery) setSearchToggles(null);
+  const togglesStale =
+    searchToggles !== null &&
+    (searchToggles.query !== normalizedQuery || searchToggles.termsMode !== termsMode);
+  if (togglesStale) setSearchToggles(null);
   const effectiveExpanded = useMemo<ReadonlySet<TreeId>>(() => {
     if (!search) return expandedNow;
-    if (!searchToggles || searchToggles.query !== search.query) return search.expandedIds;
+    if (!searchToggles || togglesStale || searchToggles.query !== search.query) {
+      return search.expandedIds;
+    }
     const next = new Set(search.expandedIds);
     for (const id of searchToggles.toggled) {
       if (!next.delete(id)) next.add(id);
@@ -451,9 +463,11 @@ function TreeViewInner<T = unknown>(
     (id: TreeId) => {
       if (search) {
         setSearchToggles((prev) => {
-          const toggled = new Set(prev && prev.query === search.query ? prev.toggled : []);
+          const toggled = new Set(
+            prev && prev.query === search.query && prev.termsMode === termsMode ? prev.toggled : [],
+          );
           if (!toggled.delete(id)) toggled.add(id);
-          return { query: search.query, toggled };
+          return { query: search.query, termsMode, toggled };
         });
         return;
       }
@@ -462,7 +476,7 @@ function TreeViewInner<T = unknown>(
       setExpanded(next);
       onExpandedChange?.([...next]);
     },
-    [effectiveExpanded, search, onExpandedChange],
+    [effectiveExpanded, search, termsMode, onExpandedChange],
   );
 
   const select = (index: number) => {
