@@ -183,15 +183,13 @@ function TreeViewInner<T = unknown>(
   let uncontrolledCheckedNow = uncontrolledChecked;
   if (reconciledData !== data) {
     setReconciledData(data);
-    // Vanished ids, and ids that are now parents with an enabled child (their state is
-    // derived, never stored), are dropped silently (no `onCheckedChange`).
+    // Only vanished ids are dropped silently (no `onCheckedChange`). An id that became derived
+    // (now a parent) stays in memory: `getCheckStates` ignores it, and it is cleared by the
+    // next user action (which is notified), so a round trip leaf -> parent -> leaf is
+    // consistent with the last reported value and with controlled mode.
     let keptChecked: Set<TreeId> | null = null;
-    const derivedNow =
-      checkable && uncontrolledChecked.size > 0
-        ? getCheckStates(data, uncontrolledChecked).derived
-        : null;
     for (const id of uncontrolledChecked) {
-      if (allIds.has(id) && !derivedNow?.has(id)) continue;
+      if (allIds.has(id)) continue;
       keptChecked ??= new Set(uncontrolledChecked);
       keptChecked.delete(id);
     }

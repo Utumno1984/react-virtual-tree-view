@@ -401,7 +401,9 @@ to `checkedIds` as is.
   those children either.
 - **Moving nodes.** Emptying a parent by drag (or by replacing `data`) turns it into a leaf: it is
   checked only if its own id is listed, which `onCheckedChange` never does for a former parent.
-  In uncontrolled mode, ids that become derived after a `data` change are dropped silently.
+  In uncontrolled mode such an id stays in memory but is ignored while the node is a parent; if the
+  node becomes a leaf again it is checked again, as in controlled mode (and consistent with the last
+  `onCheckedChange`). It is cleared by the next user action, which is notified.
 - **Vanished ids.** When `data` is replaced, ids no longer in it are dropped silently from the
   uncontrolled state (no `onCheckedChange`). A controlled `checkedIds` is never touched.
 - **Drag & drop.** The state follows the node id: moving a node does not change its checked state and
@@ -473,7 +475,7 @@ Pure functions from `tree-utils`, exported for custom drag logic, tests and tree
 | `getAncestorIds(tree, id)` | Ancestor ids from the root down to the parent. |
 | `findNodeById(tree, id)` | The node with that id, or `undefined`. |
 | `findDuplicateIds(tree)` | Ids that appear more than once. |
-| `getCheckStates(tree, checkedIds)` | `{ states, locked }`: the state of every node (`true`, `false`, `"mixed"`) and the ids that cannot be changed, in one O(n) pass. |
+| `getCheckStates(tree, checkedIds)` | `{ states, locked, derived }`: the state of every node (`true`, `false`, `"mixed"`), the ids that cannot be changed and the ids whose state is derived from their children, in one O(n) pass. |
 | `getCheckedIds(states)` | Ids whose state is `true`, in tree order. |
 | `toggleChecked(tree, checkedIds, id)` | The checked ids (non-derived, no parents with enabled children) after toggling `id` with cascade (`null` if nothing can change). |
 
