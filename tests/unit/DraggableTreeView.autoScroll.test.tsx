@@ -35,30 +35,35 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function mount(props: Partial<React.ComponentProps<typeof DraggableTreeView>> = {}) {
+function mount(
+  props: Partial<React.ComponentProps<typeof DraggableTreeView>> = {},
+  roundScrollTop = false,
+) {
   const view = render(<DraggableTreeView data={data} height={400} {...props} />);
   const tree = view.getByRole("tree") as HTMLElement;
   let top = 0;
   Object.defineProperty(tree, "scrollTop", {
     get: () => top,
     set: (v: number) => {
-      top = Math.max(0, Math.min(200 * 32 - 400, v));
+      const clamped = Math.max(0, Math.min(200 * 32 - 400, v));
+      // Chromium/Safari at DPR 1 store scrollTop as an integer.
+      top = roundScrollTop ? Math.round(clamped) : clamped;
     },
   });
   tree.getBoundingClientRect = () => ({ top: 0, bottom: 400, left: 0, right: 300 }) as DOMRect;
   return { ...view, tree };
 }
 
-function startDrag(id = "n0") {
+function startDrag(id = "n0", y = 395) {
   const row = document.querySelector(`[data-node-id="${id}"]`) as HTMLElement;
   fireEvent.mouseDown(row, { clientX: 20, clientY: 10, button: 0 });
   const move = () =>
     act(() => {
       document.dispatchEvent(
-        new MouseEvent("mousemove", { clientX: 20, clientY: 395, bubbles: true }),
+        new MouseEvent("mousemove", { clientX: 20, clientY: y, bubbles: true }),
       );
       document.dispatchEvent(
-        new MouseEvent("pointermove", { clientX: 20, clientY: 395, bubbles: true }),
+        new MouseEvent("pointermove", { clientX: 20, clientY: y, bubbles: true }),
       );
     });
   // The first move activates the drag (the sensor's own listener); the second one reaches
@@ -72,6 +77,15 @@ const ownMoveListeners = (calls: Array<[string, unknown, ...unknown[]]>) =>
   calls.filter((c) => c[0] === "pointermove" && (c[1] as { name?: string }).name === "onMove");
 
 describe("DraggableTreeView auto-scroll", () => {
+  it("still scrolls at sub-pixel speeds when the browser rounds scrollTop to integers", () => {
+    const { tree } = mount({}, true);
+    startDrag("n0", 365); // 5 px into the 40 px band: ~0.3 px/frame
+    for (let i = 0; i < 60; i++) runFrame();
+    // 60 frames * ~0.3 px: the fractions are carried over instead of being rounded away.
+    expect(tree.scrollTop).toBeGreaterThanOrEqual(15);
+    expect(tree.scrollTop).toBeLessThanOrEqual(20);
+  });
+
   it("scrolls near the bottom edge during a drag and stops after the drop", () => {
     const { tree } = mount();
     startDrag();

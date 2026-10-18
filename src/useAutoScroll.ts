@@ -92,6 +92,13 @@ export function useAutoScroll({
     // writes and by `scroll` events, so a tick never reads it before writing.
     let scrollTop = 0;
     let synced = false;
+    // Sub-pixel remainder the browser dropped when it rounded our last `scrollTop` write.
+    // Chromium at DPR 1 and Safari store integers, which would swallow increments below
+    // 0.5 px/frame forever; the remainder is added to the next frame's target instead. It
+    // is 0 where fractional scroll offsets are kept, and reset when the direction changes
+    // or the speed is 0.
+    let carry = 0;
+    let direction = 0;
     const sync = () => {
       if (synced) return;
       scrollTop = el.scrollTop;
@@ -158,10 +165,16 @@ export function useAutoScroll({
         threshold,
         maxSpeed,
       );
+      if (speed === 0 || Math.sign(speed) !== direction) carry = 0;
+      direction = Math.sign(speed);
       if (speed !== 0) {
-        el.scrollTop = scrollTop + speed;
-        // Read back once: the browser clamps to the scrollable range.
+        const target = scrollTop + carry + speed;
+        el.scrollTop = target;
+        // Read back once: the browser clamps to the scrollable range and may round.
         const after = el.scrollTop;
+        // What the browser dropped by rounding (under 1 px); a clamp at the end of the
+        // range leaves a larger gap, which is not carried.
+        carry = Math.abs(target - after) < 1 ? target - after : 0;
         if (after !== scrollTop) {
           scrollTop = after;
           onScrolledRef.current();
