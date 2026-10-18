@@ -303,7 +303,7 @@ While a drag is active, a list tall enough to scroll, or close enough that the d
 reserved row) might make it start scrolling, keeps one blank row at its end, so this zone is always
 at least one row tall, whatever padding or border the container has. The row normally clears right
 after the drop, once the scroll position no longer needs it (if the list was scrolled into the space
-the row provides, it stays until the list is scrolled back up by a row, so the content does not
+the row provides, it stays until the list is scrolled back up a little, so the content does not
 jump); a shorter list, or a container that grows with its content, is left untouched (to avoid
 shifting the layout under the pointer).
 
