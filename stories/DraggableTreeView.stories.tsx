@@ -27,6 +27,42 @@ const initialTree: TreeNode[] = [
   { id: "misc", label: "Misc" },
 ];
 
+/**
+ * 60 roots (`r0`..`r59`); `r30` is expanded with 8 children, one of which (`r30-c0`) holds a
+ * 3-level subtree. Enough rows for the virtualization window to be smaller than the list.
+ */
+const expandedSubtreeTree: TreeNode[] = Array.from({ length: 60 }, (_, i): TreeNode => {
+  const id = `r${i}`;
+  if (i === 59) {
+    // The last root is expanded too: hiding its children shrinks the list at the very end.
+    return {
+      id,
+      label: `Root ${i}`,
+      children: Array.from({ length: 6 }, (_, c): TreeNode => ({ id: `${id}-c${c}`, label: `Child ${c}` })),
+    };
+  }
+  if (i !== 30) return { id, label: `Root ${i}` };
+  return {
+    id,
+    label: `Root ${i}`,
+    children: Array.from({ length: 8 }, (_, c): TreeNode => {
+      const childId = `${id}-c${c}`;
+      if (c !== 0) return { id: childId, label: `Child ${c}` };
+      return {
+        id: childId,
+        label: "Child 0",
+        children: [
+          {
+            id: `${childId}-g0`,
+            label: "Grandchild",
+            children: [{ id: `${childId}-g0-x`, label: "Great-grandchild" }],
+          },
+        ],
+      };
+    }),
+  };
+});
+
 const largeTree = generateTree({ count: 1500, maxDepth: 4, seed: 11 });
 
 const Icon = ({ isExpanded }: RenderNodeState) =>
@@ -137,4 +173,17 @@ export const DragDisabledWhileSearching: Story = {
 /** 1500 nodes: the drop target is resolved once on release, not on every pointer move. */
 export const LargeTree: Story = {
   args: { initialData: largeTree, height: 400 },
+};
+
+/**
+ * Dragging an expanded node: its descendants are hidden while the drag is active and come
+ * back, still expanded, wherever the node is dropped. `r30` is expanded in the middle of a
+ * virtualized list.
+ */
+export const DragExpandedNode: Story = {
+  args: {
+    initialData: expandedSubtreeTree,
+    defaultExpandedIds: ["r30", "r30-c0", "r30-c0-g0", "r59"],
+    height: 300,
+  },
 };

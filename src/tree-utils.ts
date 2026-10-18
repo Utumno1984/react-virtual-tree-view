@@ -58,6 +58,26 @@ export function flattenTree<T = unknown>(
   return out;
 }
 
+/**
+ * Number of rows `node` contributes below itself in the flattened list: its descendants that
+ * are visible given `expandedIds` (the children of a collapsed node are not counted). O(subtree).
+ */
+export function countVisibleDescendants<T>(
+  node: TreeNode<T>,
+  expandedIds: ReadonlySet<TreeId>,
+): number {
+  let count = 0;
+  const stack: TreeNode<T>[] = [node];
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    const children = current.children;
+    if (!children || children.length === 0 || !expandedIds.has(current.id)) continue;
+    count += children.length;
+    for (const child of children) stack.push(child);
+  }
+  return count;
+}
+
 /** Height of the subtree rooted at `node`: a leaf is 0. */
 export function getSubtreeHeight<T>(node: TreeNode<T>): number {
   let max = 0;
@@ -638,4 +658,21 @@ export function withoutDerived<T>(data: TreeNode<T>[], ids: ReadonlySet<TreeId>)
   const kept = new Set<TreeId>();
   for (const id of ids) if (!derived.has(id)) kept.add(id);
   return kept;
+}
+
+/**
+ * Blank rows to keep while a dragged node's descendants are hidden. Only as many as the
+ * scroll position at drag start needs (`scrollTop + viewport`), never more than the rows that
+ * were hidden: keeping them all would leave a blank tail the auto-scroll could reach.
+ */
+export function getDragPaddingRows(
+  rowCount: number,
+  hiddenCount: number,
+  scrollTop: number,
+  viewport: number,
+  rowHeight: number,
+): number {
+  if (hiddenCount <= 0 || !(rowHeight > 0)) return 0;
+  const needed = Math.ceil((Math.max(0, scrollTop) + Math.max(0, viewport)) / rowHeight);
+  return Math.min(hiddenCount, Math.max(0, needed - rowCount));
 }
