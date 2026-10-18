@@ -20,11 +20,11 @@ async function openWith(page: Page, value: string | null, name = "default") {
   // Any page of the same origin gives access to its localStorage.
   await page.goto("/iframe.html");
   await page.evaluate(
-    ([key, v]) => {
-      if (v === null) window.localStorage.removeItem(key as string);
-      else window.localStorage.setItem(key as string, v);
+    ({ key, v }) => {
+      if (v === null) window.localStorage.removeItem(key);
+      else window.localStorage.setItem(key, v);
     },
-    [KEY, value],
+    { key: KEY, v: value },
   );
   await page.goto(story(name));
   await expect(page.getByTestId("stored-json")).toBeVisible();
@@ -108,7 +108,6 @@ test.describe("TreeView/StatePersistence (#48)", () => {
     );
     await page.getByTestId("simulate-reload").click();
     await expect(search(page)).toHaveValue("x");
-    // A remounted tree: the DOM is rebuilt, so tag-less checks on state only.
     await search(page).fill("");
     await expect(node(page, "docs")).toHaveAttribute("aria-expanded", "true");
     await expect(node(page, "reports")).toHaveAttribute(
