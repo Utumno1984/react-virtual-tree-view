@@ -146,6 +146,9 @@ Candidates for a future ticket, before the API is frozen:
    `padding-left`, not a nested selector.
 8. **Inline styles that cannot be overridden without `!important`**: the default drop indicator line
    (`background: #3b82f6`, `DropIndicator.tsx`) and the menu `position: fixed; z-index: 1000`
-   (`TreeContextMenu.tsx:171`). Use `renderDropIndicator` to replace the line instead.
+   (`TreeContextMenu.tsx:171`). Use `renderDropIndicator` to replace the line instead. Also, while a touch
+   press is in progress on a draggable row (`DraggableTreeView` only, from touch start to the end of the
+   drag), the draggable rows carry an inline `user-select: none` / `-webkit-touch-callout: none`; they are
+   not present at rest or with the mouse.
 9. **Not hooked at all**: the `emptyState` / `noResults` nodes are rendered as given by the consumer (no
    wrapper, no attribute) next to the tree.

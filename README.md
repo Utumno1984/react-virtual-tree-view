@@ -87,6 +87,15 @@ function MinimalDraggableTree() {
 and on disabled nodes. On touch screens press and hold a row (about 250 ms) to drag it; a normal
 swipe scrolls the tree as usual.
 
+While a touch press is in progress on a draggable row (the long-press wait and the drag itself) the
+draggable rows get an inline `user-select: none` (and `-webkit-touch-callout: none`) so the browser does
+not start a text selection that would cancel the drag; it is removed when the gesture ends. With the mouse,
+and when nothing is being pressed, text stays selectable. Also during that gesture the row `contextmenu`
+event is ignored (Chrome Android sends one after a long-press), so a `contextMenu` does not open
+mid-drag: on a draggable row the menu is reached with a right click or the menu key, not with a
+touch long-press. If a custom `renderNode` contains an `<input>`, note that iOS Safari does not let you
+type into `user-select: none` elements, but this only applies while a touch press is in progress.
+
 ### Selection, search and scrolling
 
 ```tsx

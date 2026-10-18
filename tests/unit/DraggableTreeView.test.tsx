@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TreeNode } from "../../src";
 
@@ -111,6 +111,87 @@ describe("DraggableTreeView", () => {
     render(<DraggableTreeView data={dup} />);
     expect(screen.getAllByRole("treeitem")).toHaveLength(2);
     expect(warn).toHaveBeenCalled();
+  });
+
+  const noSelect = (id: string) => row(id).style.userSelect === "none";
+  const touchStart = (el: HTMLElement) =>
+    fireEvent.touchStart(el, { touches: [{ clientX: 10, clientY: 10 }] });
+  const touchMove = (y: number) =>
+    fireEvent.touchMove(row("A"), { touches: [{ clientX: 10, clientY: y }] });
+  const touchEnd = () => fireEvent.touchEnd(row("A"));
+  const selectStartPrevented = () => {
+    const e = new Event("selectstart", { bubbles: true, cancelable: true });
+    document.body.dispatchEvent(e);
+    return e.defaultPrevented;
+  };
+
+  describe("touch gesture", () => {
+    afterEach(() => vi.useRealTimers());
+
+    it("rows are selectable at rest, user-select none only during a touch gesture", () => {
+      vi.useFakeTimers();
+      render(<DraggableTreeView data={tree} defaultExpandedIds={["p"]} />);
+      for (const id of ["p", "A", "B", "3", "q"]) expect(noSelect(id)).toBe(false);
+
+      touchStart(row("A"));
+      // the long-press wait already protects the text, on the pressed row and its neighbours
+      for (const id of ["p", "A", "3", "q"]) expect(noSelect(id)).toBe(true);
+      // a disabled node cannot be dragged: its text stays selectable
+      expect(noSelect("B")).toBe(false);
+      act(() => void vi.advanceTimersByTime(300));
+      expect(noSelect("A")).toBe(true);
+      expect(selectStartPrevented()).toBe(true);
+
+      touchEnd();
+      act(() => void vi.advanceTimersByTime(100));
+      for (const id of ["p", "A", "3", "q"]) expect(noSelect(id)).toBe(false);
+      expect(selectStartPrevented()).toBe(false);
+    });
+
+    it("a swipe (moved before the delay) aborts the gesture and restores selection", () => {
+      vi.useFakeTimers();
+      render(<DraggableTreeView data={tree} defaultExpandedIds={["p"]} />);
+      touchStart(row("A"));
+      expect(noSelect("A")).toBe(true);
+      touchMove(80);
+      expect(noSelect("A")).toBe(false);
+      touchEnd();
+      act(() => void vi.advanceTimersByTime(400));
+      expect(noSelect("A")).toBe(false);
+      expect(selectStartPrevented()).toBe(false);
+    });
+
+    it("a tap released before the delay restores selection; a second press starts clean", () => {
+      vi.useFakeTimers();
+      render(<DraggableTreeView data={tree} defaultExpandedIds={["p"]} />);
+      for (let i = 0; i < 2; i++) {
+        touchStart(row("A"));
+        expect(noSelect("A")).toBe(true);
+        touchEnd();
+        expect(noSelect("A")).toBe(false);
+      }
+    });
+
+    it("the mouse never removes text selection", () => {
+      render(<DraggableTreeView data={tree} defaultExpandedIds={["p"]} />);
+      fireEvent.mouseDown(row("A"), { button: 0, clientX: 10, clientY: 10 });
+      expect(noSelect("A")).toBe(false);
+      fireEvent.mouseMove(document, { clientX: 10, clientY: 30 });
+      expect(noSelect("A")).toBe(false);
+      fireEvent.mouseUp(document, { clientX: 10, clientY: 30 });
+      expect(noSelect("A")).toBe(false);
+    });
+
+    it("search and plain TreeView never get user-select none", () => {
+      vi.useFakeTimers();
+      render(<DraggableTreeView data={tree} searchQuery="a" />);
+      touchStart(screen.getAllByRole("treeitem")[0]!);
+      for (const r of screen.getAllByRole("treeitem")) expect(r.style.userSelect).toBe("");
+      cleanup();
+      render(<TreeView data={tree} defaultExpandedIds={["p"]} />);
+      touchStart(row("A"));
+      expect(noSelect("A")).toBe(false);
+    });
   });
 
   it("plain TreeView does not register draggables", () => {

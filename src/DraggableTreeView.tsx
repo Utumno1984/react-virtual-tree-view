@@ -1,7 +1,7 @@
-import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ForwardedRef, ReactElement } from "react";
+import { createContext, forwardRef, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties, ForwardedRef, ReactElement } from "react";
 import { DndContext, DragOverlay, MouseSensor, TouchSensor, useDraggable, useSensor, useSensors } from "@dnd-kit/core";
-import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
+import type { DragEndEvent, DragPendingEvent, DragStartEvent } from "@dnd-kit/core";
 import type { ContainerGeometry, DragRowProps, DropResolver, TreeDndAdapter } from "./dnd-internal";
 import { createPreviewStore } from "./dnd-internal";
 import { findDuplicateIds, findNodeById, getSubtreeHeight, getTreeHeight, moveNode } from "./tree-utils";
@@ -28,16 +28,35 @@ function getEventPoint(event: Event | null | undefined): { x: number; y: number 
   return { x: source.clientX, y: source.clientY };
 }
 
+/**
+ * True from the start of a touch press on a draggable row (the long-press wait of TouchSensor)
+ * until the drag ends, is cancelled or the press is aborted (swipe, early release).
+ */
+const TouchGestureContext = createContext(false);
+
+/**
+ * Applied to draggable rows only while a touch gesture is in progress: the long-press that
+ * starts a touch drag would otherwise start a native text selection (or callout) that steals the
+ * gesture and cancels the drag. Outside of a touch gesture (mouse, keyboard, reading) the text
+ * stays selectable.
+ */
+const NO_SELECT_STYLE = {
+  userSelect: "none",
+  WebkitUserSelect: "none",
+  WebkitTouchCallout: "none",
+} as const satisfies CSSProperties;
+
 function DraggableRow({ nodeId, dragDisabled, children, style, ...rest }: DragRowProps) {
   // The draggable id is the node id, never the row position: after a reorder the
   // position belongs to another node, and DragOverlay's drop animation targets the id.
   const { setNodeRef, listeners, isDragging } = useDraggable({ id: nodeId, disabled: dragDisabled });
+  const touchGesture = useContext(TouchGestureContext);
   return (
     <div
       ref={setNodeRef}
       {...rest}
       {...listeners}
-      style={style}
+      style={touchGesture && !dragDisabled ? { ...NO_SELECT_STYLE, ...style } : style}
       data-dragging={isDragging ? "" : undefined}
       data-drag-disabled={dragDisabled ? "" : undefined}
     >
@@ -63,6 +82,7 @@ function DraggableTreeViewInner<T = unknown>(
   ref: ForwardedRef<TreeViewHandle>,
 ) {
   const [activeId, setActiveId] = useState<TreeId | null>(null);
+  const [touchGesture, setTouchGesture] = useState(false);
   const resolverRef = useRef<DropResolver | null>(null);
   const expandRef = useRef<((id: TreeId) => void) | null>(null);
   const scrollElRef = useRef<HTMLElement | null>(null);
@@ -135,10 +155,27 @@ function DraggableTreeViewInner<T = unknown>(
     },
     [maxDepth],
   );
+  // Only the touch sensor has a delay constraint (the mouse waits for a distance instead).
+  const onDragPending = useCallback(({ constraint }: DragPendingEvent) => {
+    if ("delay" in constraint) setTouchGesture(true);
+  }, []);
+  const onDragAbort = useCallback(() => setTouchGesture(false), []);
 
   // moveNode addresses nodes by id: with duplicates a move could drop sibling nodes, so no
   // move is reported and no indicator is shown (it would promise a drop that never happens).
   const hasDuplicateIds = useMemo(() => findDuplicateIds(data).length > 0, [data]);
+
+  // Extra guard while a drag is active: dnd-kit already clears any selection on selectionchange,
+  // this also stops a new one from being started. Listener removed on cleanup.
+  useEffect(() => {
+    if (activeId === null) return;
+    const block = (event: Event) => event.preventDefault();
+    document.addEventListener("selectstart", block);
+    return () => {
+      document.removeEventListener("selectstart", block);
+      document.getSelection?.()?.removeAllRanges();
+    };
+  }, [activeId]);
 
   useEffect(() => {
     if (activeId === null || hasDuplicateIds) return;
@@ -196,6 +233,7 @@ function DraggableTreeViewInner<T = unknown>(
   const onDragEnd = useCallback(
     ({ active }: DragEndEvent) => {
       setActiveId(null);
+      setTouchGesture(false);
       if (hasDuplicateIds) return;
       const { x, y } = pointer.current;
       const target = resolverRef.current?.(
@@ -220,11 +258,15 @@ function DraggableTreeViewInner<T = unknown>(
     },
     [data, onTreeChange, hasDuplicateIds],
   );
-  const onDragCancel = useCallback(() => setActiveId(null), []);
+  const onDragCancel = useCallback(() => {
+    setActiveId(null);
+    setTouchGesture(false);
+  }, []);
 
   const dnd = useMemo<TreeDndAdapter>(
     () => ({
       activeId,
+      touchGesture,
       maxDepth,
       RowShell: DraggableRow,
       resolverRef,
@@ -234,7 +276,7 @@ function DraggableTreeViewInner<T = unknown>(
       renderDropIndicator,
       renderOverlay,
     }),
-    [activeId, maxDepth, previewStore, renderDropIndicator],
+    [activeId, touchGesture, maxDepth, previewStore, renderDropIndicator],
   );
 
   return (
@@ -242,11 +284,15 @@ function DraggableTreeViewInner<T = unknown>(
       sensors={sensors}
       // dnd-kit's own auto-scroll stays off: `useAutoScroll` scrolls the tree (no double scroll).
       autoScroll={false}
+      onDragPending={onDragPending}
+      onDragAbort={onDragAbort}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       onDragCancel={onDragCancel}
     >
-      <TreeViewWithDnd<T> {...props} ref={ref} dnd={dnd} />
+      <TouchGestureContext.Provider value={touchGesture}>
+        <TreeViewWithDnd<T> {...props} ref={ref} dnd={dnd} />
+      </TouchGestureContext.Provider>
     </DndContext>
   );
 }

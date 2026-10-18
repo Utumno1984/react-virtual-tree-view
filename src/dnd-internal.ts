@@ -69,6 +69,8 @@ export function createPreviewStore(): PreviewStore {
 export interface TreeDndAdapter {
   /** Id of the node being dragged; its descendants are hidden meanwhile. */
   activeId: TreeId | null;
+  /** A touch press on a draggable row is in progress (long-press wait or active drag). */
+  touchGesture: boolean;
   /** Maximum depth a drop can reach (root = 0); `undefined` = no limit. */
   maxDepth?: number;
   /** Replaces the row `<div>`; registers the row as a draggable. */
