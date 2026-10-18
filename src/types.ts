@@ -165,9 +165,10 @@ export interface TreeViewProps<T = unknown> {
   /** Initially checked ids for the uncontrolled mode (read on mount only). */
   defaultCheckedIds?: ReadonlyArray<TreeNode["id"]>;
   /**
-   * Called once per user action (checkbox click or Space) with the resulting checked ids: every
-   * node whose state is `true`, ancestors included, in tree order (so it can be fed back as
-   * `checkedIds`). Not called when nothing can change (disabled node), nor when `data` is
+   * Called once per user action (checkbox click or Space) with the resulting checked ids, in
+   * tree order: the checked leaves (and checked nodes whose state is not derived, such as parents
+   * whose children are all disabled). Parents with an enabled child are NOT listed: their state
+   * is derived from the descendants. It can be fed back as `checkedIds`. Not called when nothing can change (disabled node), nor when `data` is
    * replaced and vanished ids are dropped from the uncontrolled state.
    */
   onCheckedChange?: (checkedIds: Array<TreeNode["id"]>) => void;

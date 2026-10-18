@@ -114,19 +114,17 @@ describe("toggleChecked", () => {
 
   it("checks a parent and all its descendants, then unchecks them", () => {
     const checked = toggleChecked(tree(), none, "b")!;
-    expect(checked).toEqual(["b", "b1", "b2"]);
+    expect(checked).toEqual(["b1", "b2"]); // the parent "b" is derived, not listed
     expect(toggleChecked(tree(), new Set(checked), "b")).toEqual([]);
   });
 
-  it("includes the ancestors that become fully checked", () => {
-    expect(toggleChecked(tree(), new Set(["a", "b1"]), "b2")).toEqual(["p", "a", "b", "b1", "b2"]);
+  it("does not list the ancestors that become fully checked (they are derived)", () => {
+    expect(toggleChecked(tree(), new Set(["a", "b1"]), "b2")).toEqual(["a", "b1", "b2"]);
     expect(toggleChecked(tree(), new Set(["p", "a", "b", "b1", "b2"]), "b1")).toEqual(["a", "b2"]);
   });
 
   it("a mixed node gets checked", () => {
-    expect(toggleChecked(tree(), new Set(["b1"]), "p")).toEqual(
-      ["p", "a", "b", "b1", "b2"],
-    );
+    expect(toggleChecked(tree(), new Set(["b1"]), "p")).toEqual(["a", "b1", "b2"]);
   });
 
   it("a single node without children toggles itself", () => {
@@ -201,7 +199,7 @@ describe("toggleChecked", () => {
 
   it("works on the whole data regardless of what is visible: hidden descendants are included", () => {
     // The helper has no notion of rows: toggling "p" reaches every descendant, however deep.
-    expect(toggleChecked(tree(), none, "p")).toEqual(["p", "a", "b", "b1", "b2"]);
+    expect(toggleChecked(tree(), none, "p")).toEqual(["a", "b1", "b2"]);
   });
 
   it("drops ids missing from the tree from the result", () => {
@@ -218,12 +216,36 @@ describe("toggleChecked", () => {
     const started = performance.now();
     const checked = toggleChecked(data, none, "root")!;
     expect(performance.now() - started).toBeLessThan(1000);
-    expect(checked.length).toBe(6000 + 600 + 1);
+    // leaves only: 5400 childless nodes + 600 "m" leaves (the 600 parents and root are derived)
+    expect(checked.length).toBe(5400 + 600);
+  });
+
+  it("never lists parents with an enabled child, even if they were passed in", () => {
+    const out = toggleChecked(tree(), new Set(["p", "b"]), "solo")!;
+    expect(out).toEqual(["solo"]);
+  });
+
+  it("lists a locked parent only through its own id, children stay listed", () => {
+    const data: TreeNode[] = [
+      { id: "d", label: "D", isDisabled: true, children: [{ id: "d1", label: "D1" }] },
+      { id: "x", label: "X" },
+    ];
+    expect(toggleChecked(data, new Set(["d", "d1"]), "x")).toEqual(["d", "d1", "x"]);
+  });
+
+  it("toggles the first occurrence in pre-order when ids repeat", () => {
+    const data: TreeNode[] = [
+      { id: "g", label: "G", children: [{ id: "dup", label: "deep", isDisabled: true }] },
+      { id: "dup", label: "top" },
+    ];
+    // the first (disabled) occurrence wins: nothing changes
+    expect(toggleChecked(data, new Set(), "dup")).toBeNull();
   });
 
   it("does not overflow the stack on a very deep chain", () => {
     let node: TreeNode = { id: 0, label: "0" };
     for (let i = 1; i < 3000; i++) node = { id: i, label: String(i), children: [node] };
-    expect(toggleChecked([node], none, 2999)!.length).toBe(3000);
+    // only the single leaf at the bottom is listed
+    expect(toggleChecked([node], none, 2999)).toEqual([0]);
   });
 });

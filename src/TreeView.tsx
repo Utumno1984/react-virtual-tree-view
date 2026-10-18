@@ -32,6 +32,7 @@ import {
   getCheckStates,
   getDropTarget,
   toggleChecked,
+  withoutDerived,
 } from "./tree-utils";
 import type { DropTarget, FlattenedNode, TreeId } from "./tree-utils";
 import type { TreeDndAdapter } from "./dnd-internal";
@@ -159,7 +160,11 @@ function TreeViewInner<T = unknown>(
   // Uncontrolled checked ids (only meaningful with `checkable`); ids missing from `data` are
   // never kept.
   const [uncontrolledChecked, setUncontrolledChecked] = useState<ReadonlySet<TreeId>>(
-    () => new Set((defaultCheckedIds ?? []).filter((id) => allIds.has(id))),
+    () => {
+      const ids = new Set((defaultCheckedIds ?? []).filter((id) => allIds.has(id)));
+      // Parents are derived from their children: their own id is never stored.
+      return checkable ? withoutDerived(data, ids) : ids;
+    },
   );
   // When `data` is replaced, ids that no longer exist in it are dropped from the internal
   // state (uncontrolled selection, expanded nodes) silently: no `onSelect` and no
@@ -178,10 +183,15 @@ function TreeViewInner<T = unknown>(
   let uncontrolledCheckedNow = uncontrolledChecked;
   if (reconciledData !== data) {
     setReconciledData(data);
-    // Vanished checked ids are dropped silently (no `onCheckedChange`).
+    // Vanished ids, and ids that are now parents with an enabled child (their state is
+    // derived, never stored), are dropped silently (no `onCheckedChange`).
     let keptChecked: Set<TreeId> | null = null;
+    const derivedNow =
+      checkable && uncontrolledChecked.size > 0
+        ? getCheckStates(data, uncontrolledChecked).derived
+        : null;
     for (const id of uncontrolledChecked) {
-      if (allIds.has(id)) continue;
+      if (allIds.has(id) && !derivedNow?.has(id)) continue;
       keptChecked ??= new Set(uncontrolledChecked);
       keptChecked.delete(id);
     }
@@ -725,7 +735,18 @@ function TreeViewInner<T = unknown>(
             }}
             disabled={!interactive || checkModel.locked.has(node.id)}
             readOnly={!interactive}
-            onChange={interactive ? () => toggleCheck(node.id) : () => {}}
+            onChange={
+              interactive
+                ? (event) => {
+                    // The browser clears `indeterminate` on click and React only restores
+                    // `checked`: without a re-render (controlled, parent ignores the change)
+                    // the box would look empty while aria-checked says "mixed".
+                    const input = event.currentTarget;
+                    toggleCheck(node.id);
+                    input.indeterminate = state.checkState === "mixed";
+                  }
+                : () => {}
+            }
             // Neither a row click (select) nor the drag sensors must see the pointer.
             onClick={(event) => event.stopPropagation()}
             onMouseDown={(event) => {

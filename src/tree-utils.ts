@@ -493,6 +493,8 @@ export interface CheckStates {
   states: Map<TreeId, CheckState>;
   /** Ids the user cannot change: disabled nodes and everything below them. */
   locked: Set<TreeId>;
+  /** Ids whose state is derived from their children (their own id is never stored). */
+  derived: Set<TreeId>;
 }
 
 /**
@@ -511,11 +513,13 @@ export function getCheckStates<T>(
 ): CheckStates {
   const states = new Map<TreeId, CheckState>();
   const locked = new Set<TreeId>();
+  const derived = new Set<TreeId>();
   const visit = (node: TreeNode<T>, isLocked: boolean): CheckState => {
     const nodeLocked = isLocked || !!node.isDisabled;
     if (nodeLocked) locked.add(node.id);
     // Placeholder first: Map keeps the insertion order, so the result is in pre-order.
     states.set(node.id, false);
+    derived.delete(node.id);
     const children = node.children;
     let state: CheckState = checkedIds.has(node.id);
     if (children && children.length > 0) {
@@ -528,13 +532,16 @@ export function getCheckStates<T>(
         if (childState !== true) all = false;
         if (childState !== false) none = false;
       }
-      if (!nodeLocked && hasEnabledChild) state = all ? true : none ? false : "mixed";
+      if (!nodeLocked && hasEnabledChild) {
+        state = all ? true : none ? false : "mixed";
+        derived.add(node.id);
+      }
     }
     states.set(node.id, state);
     return state;
   };
   for (const root of data) visit(root, false);
-  return { states, locked };
+  return { states, locked, derived };
 }
 
 /** Ids whose state is `true`, in tree (pre-)order. */
@@ -551,29 +558,36 @@ export function getCheckedIds(states: ReadonlyMap<TreeId, CheckState>): TreeId[]
  * The change cascades to the node and all its descendants, skipping every disabled node together
  * with its whole subtree. The direction is "check" unless every enabled node at the bottom of
  * that cascade is already checked ("uncheck"); this way a parent shown as `"mixed"` (because of
- * a disabled child) can never get stuck. The result lists every node whose derived state is
- * `true` (ancestors included), in tree order, so it can be passed back as `checkedIds`. One
- * O(n) pass for the lookup and the cascade plus one for the aggregate.
+ * a disabled child) can never get stuck. The result lists, in tree order, only the nodes that
+ * are `true` and whose state is not derived: leaves, locked nodes, and parents whose children
+ * are all disabled. Parents with an enabled child are never listed (their state is computed from
+ * the descendants), so the list stays valid when the tree is restructured; it can be passed back
+ * as `checkedIds`. One O(n) pass for the lookup and the cascade plus one for the aggregate.
+ *
+ * With duplicate ids, the first occurrence in depth-first pre-order is the one toggled (even if
+ * it is disabled: then nothing changes).
  */
 export function toggleChecked<T>(
   data: TreeNode<T>[],
   checkedIds: ReadonlySet<TreeId>,
   id: TreeId,
 ): TreeId[] | null {
-  // Find the first enabled occurrence (iterative, so very deep trees cannot overflow).
+  // Explicit stack, pre-order: the first match in document order.
   let target: TreeNode<T> | undefined;
   let locked = false;
-  const stack: Array<{ nodes: TreeNode<T>[]; locked: boolean }> = [{ nodes: data, locked: false }];
-  search: while (stack.length > 0) {
-    const { nodes, locked: parentLocked } = stack.pop()!;
-    for (const n of nodes) {
-      const nodeLocked = parentLocked || !!n.isDisabled;
-      if (n.id === id) {
-        target = n;
-        locked = nodeLocked;
-        break search;
-      }
-      if (n.children && n.children.length > 0) stack.push({ nodes: n.children, locked: nodeLocked });
+  const stack: Array<{ node: TreeNode<T>; locked: boolean }> = [];
+  for (let i = data.length - 1; i >= 0; i--) stack.push({ node: data[i]!, locked: false });
+  while (stack.length > 0) {
+    const { node: n, locked: parentLocked } = stack.pop()!;
+    const nodeLocked = parentLocked || !!n.isDisabled;
+    if (n.id === id) {
+      target = n;
+      locked = nodeLocked;
+      break;
+    }
+    const kids = n.children;
+    if (kids) {
+      for (let i = kids.length - 1; i >= 0; i--) stack.push({ node: kids[i]!, locked: nodeLocked });
     }
   }
   if (!target || locked) return null;
@@ -597,5 +611,19 @@ export function toggleChecked<T>(
     if (allChecked) next.delete(nodeId);
     else next.add(nodeId);
   }
-  return getCheckedIds(getCheckStates(data, next).states);
+  const { states, derived } = getCheckStates(data, next);
+  return getCheckedIds(states).filter((checked) => !derived.has(checked));
+}
+
+/**
+ * `ids` without those whose state is derived from their children (parents with an enabled
+ * child): only leaves, locked nodes and parents whose children are all disabled keep their own
+ * id. Internal helper for the uncontrolled state.
+ */
+export function withoutDerived<T>(data: TreeNode<T>[], ids: ReadonlySet<TreeId>): Set<TreeId> {
+  if (ids.size === 0) return new Set(ids);
+  const { derived } = getCheckStates(data, ids);
+  const kept = new Set<TreeId>();
+  for (const id of ids) if (!derived.has(id)) kept.add(id);
+  return kept;
 }

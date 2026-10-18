@@ -368,8 +368,10 @@ function CheckableTree() {
 
 Use `defaultCheckedIds` instead of `checkedIds` for the uncontrolled mode (read once, like
 `defaultExpandedIds`). `onCheckedChange` is called once per user action (checkbox click or Space) with
-every node whose state is checked, ancestors included, in tree order: it can be fed back to
-`checkedIds` as is.
+the checked leaves in tree order (plus checked nodes whose state is not derived, such as a parent
+whose children are all disabled). Parents with an enabled child are not listed: their state is
+derived from the descendants, so the list stays valid when you move nodes around. It can be fed back
+to `checkedIds` as is.
 
 - **Independent from the selection.** Clicking the checkbox does not select the row (`onSelect`,
   `selectedId`), clicking the row does not check it, and the checkbox never starts a drag. Space toggles
@@ -393,7 +395,13 @@ every node whose state is checked, ancestors included, in tree order: it can be 
   Siblings are still checked. Their current state (from `defaultCheckedIds`/`checkedIds`) stays and
   counts for the ancestors: a checked disabled child keeps its parent `"mixed"` or `true`. A parent
   with an unchecked disabled child still toggles its enabled children, and a second click unchecks
-  them (it never gets stuck on `"mixed"`).
+  them (it never gets stuck on `"mixed"`). A disabled node whose children are checked through
+  `defaultCheckedIds`/`checkedIds` shows its own state (`false` unless its own id is listed) while
+  the children show `true`; the disabled node is not derived from them, so ancestors do not count
+  those children either.
+- **Moving nodes.** Emptying a parent by drag (or by replacing `data`) turns it into a leaf: it is
+  checked only if its own id is listed, which `onCheckedChange` never does for a former parent.
+  In uncontrolled mode, ids that become derived after a `data` change are dropped silently.
 - **Vanished ids.** When `data` is replaced, ids no longer in it are dropped silently from the
   uncontrolled state (no `onCheckedChange`). A controlled `checkedIds` is never touched.
 - **Drag & drop.** The state follows the node id: moving a node does not change its checked state and
@@ -419,7 +427,7 @@ every node whose state is checked, ancestors included, in tree order: it can be 
 | `onSelect` | `(id, node) => void` | none | User selected an enabled node (click, Enter, Space). |
 | `checkable` | `boolean` | `false` | Checkbox on every row, with cascade and indeterminate state. See "Checkbox mode". |
 | `checkedIds` / `defaultCheckedIds` | `Array<string \| number>` | none | Controlled / initial (read once) checked ids. |
-| `onCheckedChange` | `(ids) => void` | none | User toggled a node; receives every checked id, ancestors included. |
+| `onCheckedChange` | `(ids) => void` | none | User toggled a node; receives the checked ids (leaves; derived parents are not listed). |
 | `onStateChange` | `(state: TreeViewPersistableState) => void` | none | Expanded ids, selection or search query changed; see "Persisting the tree state". |
 | `initialState` | `TreeViewPersistableState` | none | State to restore on mount (read once); replaces `defaultExpandedIds`/`defaultSelectedId`. |
 | `searchQuery` | `string` | none | Case-insensitive substring filter on `label`; shows matches and their ancestors, wraps matches in `<mark>`. |
@@ -467,7 +475,7 @@ Pure functions from `tree-utils`, exported for custom drag logic, tests and tree
 | `findDuplicateIds(tree)` | Ids that appear more than once. |
 | `getCheckStates(tree, checkedIds)` | `{ states, locked }`: the state of every node (`true`, `false`, `"mixed"`) and the ids that cannot be changed, in one O(n) pass. |
 | `getCheckedIds(states)` | Ids whose state is `true`, in tree order. |
-| `toggleChecked(tree, checkedIds, id)` | The checked ids after toggling `id` with cascade (`null` if nothing can change). |
+| `toggleChecked(tree, checkedIds, id)` | The checked ids (non-derived, no parents with enabled children) after toggling `id` with cascade (`null` if nothing can change). |
 
 `getProjection`, `getDropTarget` and `getSiblingDropTarget` return `null` when no valid target exists
 (unknown ids, out-of-range index), so check the result before using it. `moveNode` returns an object,

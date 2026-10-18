@@ -203,3 +203,20 @@ export const Draggable: Story = {
     draggable: true,
   },
 };
+
+const emptying: TreeNode[] = [
+  {
+    id: "p",
+    label: "Parent",
+    children: [
+      { id: "a", label: "Alpha" },
+      { id: "b", label: "Beta" },
+    ],
+  },
+  { id: "q", label: "Other" },
+];
+
+/** Drag the children out of a parent: it is derived from its children, never stored as checked. */
+export const DraggableEmptiedParent: Story = {
+  args: { data: emptying, defaultExpandedIds: ["p"], draggable: true },
+};

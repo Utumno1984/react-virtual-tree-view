@@ -25,9 +25,8 @@ test.describe("checkable", () => {
       await expect(node(page, id)).toHaveAttribute("aria-checked", "true");
     }
     await expect(node(page, "src")).toHaveAttribute("aria-checked", "false");
-    await expect(events(page)).toHaveText(
-      'onCheckedChange ["docs","cv","notes","reports","q1","q2"]',
-    );
+    // only the leaves: derived parents are not listed
+    await expect(events(page)).toHaveText('onCheckedChange ["cv","notes","q1","q2"]');
     await box(page, "docs").click();
     await expect(node(page, "q2")).toHaveAttribute("aria-checked", "false");
     await expect(events(page)).toContainText("onCheckedChange []");
@@ -133,9 +132,7 @@ test.describe("checkable", () => {
     await expect(box(page, "viewer")).toBeDisabled();
 
     await box(page, "all").click();
-    await expect(events(page)).toHaveText(
-      'onCheckedChange ["editor","e1","e2","viewer","guest"]',
-    );
+    await expect(events(page)).toHaveText('onCheckedChange ["e1","e2","viewer","guest"]');
     for (const id of ["editor", "e1", "e2", "guest", "viewer"]) {
       await expect(node(page, id)).toHaveAttribute("aria-checked", "true");
     }
@@ -147,9 +144,7 @@ test.describe("checkable", () => {
     await node(page, "viewer").focus();
     await page.keyboard.press("Space");
     await expect(node(page, "viewer")).toHaveAttribute("aria-checked", "true");
-    await expect(events(page)).toHaveText(
-      'onCheckedChange ["editor","e1","e2","viewer","guest"]',
-    );
+    await expect(events(page)).toHaveText('onCheckedChange ["e1","e2","viewer","guest"]');
   });
 
   test("Controlled: ignoring the change keeps the UI, following it updates it", async ({
@@ -171,6 +166,18 @@ test.describe("checkable", () => {
     await expect(node(page, "q1")).toHaveAttribute("aria-checked", "true");
     await expect(node(page, "notes")).toHaveAttribute("aria-checked", "false");
     await expect(node(page, "reports")).toHaveAttribute("aria-checked", "mixed");
+  });
+
+  test("Controlled: clicking a mixed parent the owner ignores keeps it indeterminate", async ({
+    page,
+  }) => {
+    await open(page, "controlled");
+    await page.getByTestId("apply").uncheck();
+    await expect(node(page, "docs")).toHaveAttribute("aria-checked", "mixed");
+    await box(page, "docs").click();
+    await expect(events(page)).toContainText("onCheckedChange");
+    await expect(node(page, "docs")).toHaveAttribute("aria-checked", "mixed");
+    expect(await box(page, "docs").evaluate((el: HTMLInputElement) => el.indeterminate)).toBe(true);
   });
 
   test("Draggable: the checkbox does not start a drag", async ({ page }) => {
@@ -205,5 +212,36 @@ test.describe("checkable", () => {
     await expect(node(page, "docs")).toHaveAttribute("aria-checked", "false");
     await expect(node(page, "src")).toHaveAttribute("aria-checked", "mixed");
     await expect(events(page)).toHaveText("onCheckedChange: none yet");
+  });
+});
+
+test.describe("checkable: a parent emptied by dragging", () => {
+  const dragLeft = async (page: Page, id: string) => {
+    const start = await center(node(page, id));
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(start.x, start.y + 8, { steps: 3 });
+    await page.mouse.move(start.x - 24, start.y, { steps: 10 });
+    await page.mouse.up();
+  };
+
+  test("does not become checked, whatever the order of the drags", async ({ page }) => {
+    await open(page, "draggable-emptied-parent");
+    await box(page, "a").click();
+    await expect(events(page)).toHaveText('onCheckedChange ["a"]');
+    await expect(node(page, "p")).toHaveAttribute("aria-checked", "mixed");
+
+    // b leaves: p is now derived from a alone (checked), with no event.
+    await dragLeft(page, "b");
+    await expect(node(page, "b")).toHaveAttribute("aria-level", "1");
+    await expect(node(page, "p")).toHaveAttribute("aria-checked", "true");
+
+    // a leaves too: p is an empty leaf nobody checked.
+    await dragLeft(page, "a");
+    await expect(node(page, "a")).toHaveAttribute("aria-level", "1");
+    await expect(node(page, "p")).toHaveAttribute("aria-checked", "false");
+    await expect(node(page, "a")).toHaveAttribute("aria-checked", "true");
+    await expect(node(page, "b")).toHaveAttribute("aria-checked", "false");
+    await expect(events(page)).toHaveText('onCheckedChange ["a"]');
   });
 });

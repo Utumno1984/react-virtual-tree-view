@@ -60,7 +60,7 @@ describe.each([
     );
     fireEvent.click(box("p"));
     expect(onCheckedChange).toHaveBeenCalledTimes(1);
-    expect(onCheckedChange).toHaveBeenCalledWith(["p", "a", "b", "c", "c1"]);
+    expect(onCheckedChange).toHaveBeenCalledWith(["a", "b", "c1"]); // derived parents not listed
     for (const id of ["p", "a", "b", "c", "c1"]) expect(checkedAttr(id)).toBe("true");
     expect(box("p").checked).toBe(true);
     expect(checkedAttr("solo")).toBe("false");
@@ -196,7 +196,7 @@ describe.each([
     expect(checkedAttr("p")).toBe("mixed");
     // ...and checking the parent reaches the hidden ones.
     fireEvent.click(box("p"));
-    expect(onCheckedChange).toHaveBeenLastCalledWith(["p", "a", "b", "c", "c1"]);
+    expect(onCheckedChange).toHaveBeenLastCalledWith(["a", "b", "c1"]);
     rerender(
       <Component
         data={tree()}
@@ -367,7 +367,7 @@ describe.each([
     const started = performance.now();
     fireEvent.click(box("root"));
     expect(performance.now() - started).toBeLessThan(2000);
-    expect(onCheckedChange.mock.calls[0]![0]).toHaveLength(5001);
+    expect(onCheckedChange.mock.calls[0]![0]).toHaveLength(5000); // the parent "root" is derived
   });
 });
 
@@ -402,5 +402,123 @@ describe("DraggableTreeView checkable", () => {
     expect(checkedAttr("a")).toBe("true");
     expect(checkedAttr("q")).toBe("true");
     expect(checkedAttr("p")).toBe("false");
+  });
+
+  it("a parent emptied by moving its only checked child does not become checked", () => {
+    const onCheckedChange = vi.fn();
+    const before: TreeNode[] = [
+      { id: "p", label: "Parent", children: [{ id: "a", label: "Alpha" }] },
+      { id: "q", label: "Other" },
+    ];
+    const after: TreeNode[] = [
+      { id: "p", label: "Parent" },
+      { id: "q", label: "Other", children: [{ id: "a", label: "Alpha" }] },
+    ];
+    function Harness() {
+      const [data, setData] = useState(before);
+      return (
+        <>
+          <button onClick={() => setData(after)}>move</button>
+          <DraggableTreeView
+            data={data}
+            checkable
+            defaultExpandedIds={["p", "q"]}
+            onCheckedChange={onCheckedChange}
+          />
+        </>
+      );
+    }
+    render(<Harness />);
+    fireEvent.click(box("a"));
+    expect(onCheckedChange).toHaveBeenLastCalledWith(["a"]);
+    expect(checkedAttr("p")).toBe("true");
+    fireEvent.click(screen.getByText("move"));
+    expect(checkedAttr("p")).toBe("false");
+    expect(checkedAttr("a")).toBe("true");
+    expect(checkedAttr("q")).toBe("true");
+  });
+
+  it("the outcome does not depend on the order of the moves", () => {
+    const a = { id: "a", label: "Alpha" };
+    const b = { id: "b", label: "Beta" };
+    const states = [
+      [{ id: "p", label: "P", children: [a, b] }, { id: "q", label: "Q" }],
+      [{ id: "p", label: "P", children: [a] }, { id: "q", label: "Q", children: [b] }],
+      [{ id: "p", label: "P" }, { id: "q", label: "Q", children: [b, a] }],
+    ] as TreeNode[][];
+    const finalStates = new Map<string, string | null>();
+    for (const order of [[0, 1, 2], [0, 2]]) {
+      function Harness() {
+        const [step, setStep] = useState(0);
+        return (
+          <>
+            <button onClick={() => setStep((s) => s + 1)}>next</button>
+            <DraggableTreeView
+              data={states[order[step]!]!}
+              checkable
+              defaultExpandedIds={["p", "q"]}
+              defaultCheckedIds={["a"]}
+            />
+          </>
+        );
+      }
+      render(<Harness />);
+      for (let i = 1; i < order.length; i++) fireEvent.click(screen.getByText("next"));
+      finalStates.set(order.join(), `${checkedAttr("p")}/${checkedAttr("q")}`);
+      cleanup();
+    }
+    expect([...finalStates.values()]).toEqual(["false/mixed", "false/mixed"]);
+  });
+
+  it("a parent id in defaultCheckedIds is ignored and does not come back when emptied", () => {
+    const before: TreeNode[] = [
+      { id: "p", label: "Parent", children: [{ id: "a", label: "Alpha" }] },
+      { id: "q", label: "Other" },
+    ];
+    const after: TreeNode[] = [
+      { id: "p", label: "Parent" },
+      { id: "q", label: "Other", children: [{ id: "a", label: "Alpha" }] },
+    ];
+    function Harness() {
+      const [data, setData] = useState(before);
+      return (
+        <>
+          <button onClick={() => setData(after)}>move</button>
+          <DraggableTreeView
+            data={data}
+            checkable
+            defaultExpandedIds={["p", "q"]}
+            defaultCheckedIds={["p"]}
+          />
+        </>
+      );
+    }
+    render(<Harness />);
+    expect(checkedAttr("p")).toBe("false");
+    fireEvent.click(screen.getByText("move"));
+    expect(checkedAttr("p")).toBe("false");
+    expect(checkedAttr("a")).toBe("false");
+  });
+});
+
+describe("controlled checkedIds on a mixed parent", () => {
+  it("keeps the indeterminate flag when the parent ignores the change", () => {
+    const onCheckedChange = vi.fn();
+    render(
+      <TreeView
+        data={tree()}
+        checkable
+        checkedIds={["a"]}
+        defaultExpandedIds={expandAll}
+        onCheckedChange={onCheckedChange}
+      />,
+    );
+    expect(checkedAttr("p")).toBe("mixed");
+    expect(box("p").indeterminate).toBe(true);
+    fireEvent.click(box("p"));
+    expect(onCheckedChange).toHaveBeenCalledTimes(1);
+    expect(checkedAttr("p")).toBe("mixed");
+    expect(box("p").checked).toBe(false);
+    expect(box("p").indeterminate).toBe(true);
   });
 });

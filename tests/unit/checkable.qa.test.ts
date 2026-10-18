@@ -23,7 +23,7 @@ describe("checkable QA (large and degenerate trees)", () => {
     const t = performance.now();
     const next = toggleChecked(data, new Set(), "r0")!;
     const ms = performance.now() - t;
-    expect(next.length).toBe(1 + 50 + 500);
+    expect(next.length).toBe(500); // leaves only: the 51 parents are derived
     expect(toggleChecked(data, new Set(next), "r0")).toEqual([]);
     expect(getCheckStates(data, new Set(next)).states.get("r1")).toBe(false);
     expect(ms).toBeLessThan(500);
