@@ -149,7 +149,8 @@ test.describe("dragging an expanded node", () => {
     const lastBox = (await node(page, lastId).boundingBox())!;
     // the last row is inside the window: no blank space after it
     expect(lastBox.y + lastBox.height).toBeLessThanOrEqual(treeBox.y + treeBox.height + 1);
-    expect(lastBox.y + lastBox.height).toBeGreaterThan(treeBox.y + treeBox.height - 40);
+    // (only the one row reserved at the end for the "end of the tree" drop zone)
+    expect(lastBox.y + lastBox.height).toBeGreaterThan(treeBox.y + treeBox.height - 40 - lastBox.height);
     await expect(indicator(page)).toBeVisible();
     const indBox = (await indicator(page).boundingBox())!;
     expect(indBox.y).toBeGreaterThanOrEqual(treeBox.y - 1);
@@ -204,5 +205,40 @@ test.describe("dragging an expanded node", () => {
     await expect(node(page, "r30-c1")).toBeVisible();
     await page.mouse.up();
     await expect(log(page)).toContainText('"nodeId":"r29"');
+  });
+});
+
+test.describe("end of the tree with a bare container (no padding, no border)", () => {
+  const bareUrl = storyUrl("draggabletreeview-draggable--drag-bare-container");
+
+  test("a row-tall zone below the last row exists and drops at the end of the roots", async ({ page }) => {
+    await page.goto(bareUrl);
+    await expect(node(page, "r0")).toBeVisible();
+    const style = await tree(page).evaluate((el) => {
+      const cs = getComputedStyle(el);
+      return [cs.paddingTop, cs.paddingBottom, cs.borderTopWidth, cs.borderBottomWidth];
+    });
+    expect(style).toEqual(["0px", "0px", "0px", "0px"]);
+    await tree(page).evaluate((el) => (el.scrollTop = el.scrollHeight));
+    await expect(node(page, "r59-c5")).toBeVisible();
+    const start = await center(node(page, "r58"));
+    await dragToPoint(page, node(page, "r58"), { x: start.x, y: start.y + 8 });
+    // the reserved row lets the list scroll one row further: the last row ends above the
+    // container's bottom edge and the pointer 6px above that edge is below it
+    const treeBox = (await tree(page).boundingBox())!;
+    const target = treeBox.y + treeBox.height - 6;
+    await page.mouse.move(start.x, target, { steps: 4 });
+    await expect
+      .poll(async () => {
+        const box = await node(page, "r59-c5").boundingBox();
+        return box ? box.y + box.height : Infinity;
+      })
+      .toBeLessThan(target);
+    await expect(indicator(page)).toBeVisible();
+    await page.mouse.up();
+    await expect(log(page)).toContainText('"nodeId":"r58","fromParentId":null,"toParentId":null');
+    const ids = await order(page);
+    expect(ids[ids.length - 1]).toBe("r58");
+    await expect(node(page, "r58")).toHaveAttribute("aria-posinset", "60");
   });
 });

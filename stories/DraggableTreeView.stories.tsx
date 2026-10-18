@@ -75,6 +75,8 @@ interface DemoProps {
   height?: number;
   /** When false the consumer ignores `onTreeChange`, so the tree never changes. */
   applyChanges?: boolean;
+  /** Container without padding or border (the end-of-tree drop zone must not depend on them). */
+  bareContainer?: boolean;
 }
 
 function DraggableDemo({
@@ -83,6 +85,7 @@ function DraggableDemo({
   initialQuery = "",
   height,
   applyChanges = true,
+  bareContainer = false,
 }: DemoProps) {
   const [data, setData] = useState(initialData);
   const [query, setQuery] = useState(initialQuery);
@@ -108,7 +111,11 @@ function DraggableDemo({
           setLastEvent(event);
           if (applyChanges) setData(tree);
         }}
-        className="rounded border border-gray-200 bg-white p-2 text-sm text-gray-800"
+        className={
+          bareContainer
+            ? "bg-white text-sm text-gray-800"
+            : "rounded border border-gray-200 bg-white p-2 text-sm text-gray-800"
+        }
         rowClassName={(state) =>
           `flex items-center gap-1 rounded px-1 py-1 hover:bg-gray-100 ${
             state.isDisabled ? "text-gray-400" : "cursor-grab"
@@ -210,5 +217,18 @@ export const DragExpandedNode: Story = {
     initialData: expandedSubtreeTree,
     defaultExpandedIds: ["r30", "r30-c0", "r30-c0-g0", "r59"],
     height: 300,
+  },
+};
+
+/**
+ * Container with no padding and no border: while dragging, the list keeps one blank row at the
+ * end, so the pointer below the last row (end of the whole tree) always has a row-tall zone.
+ */
+export const DragBareContainer: Story = {
+  args: {
+    initialData: expandedSubtreeTree,
+    defaultExpandedIds: ["r59"],
+    height: 300,
+    bareContainer: true,
   },
 };

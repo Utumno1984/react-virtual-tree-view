@@ -299,9 +299,14 @@ A pointer **below the last row** of the list (the blank space under a short list
 edge of the container when the list is scrolled to its end) means "the end of the whole tree": the
 last position among the roots.
 
-**Known limit:** when the last visible row is itself expanded, nesting a node as the *last* child of
-one of its ancestors is not reachable without first collapsing that row (the lower band of an
-expanded row is its first-child zone). There is no keyboard alternative for dragging yet.
+While a drag is active in a list that scrolls, it keeps one blank row at its end, so this zone is at
+least one row tall, whatever padding or border the container has (a container that grows with its
+content is left untouched, to avoid shifting the layout under the pointer).
+
+**Known limit:** for every ancestor of the last visible row, except its direct parent, "become the
+last child of that ancestor" is not reachable without first collapsing something in its subtree (the
+lower band of an expanded row is its first-child zone). There is no keyboard alternative for
+dragging yet.
 
 Not valid targets (no indicator, nothing happens on release): the dragged node itself, and with
 `maxDepth` a zone that would put the node or any descendant deeper than the limit (the "child" zone

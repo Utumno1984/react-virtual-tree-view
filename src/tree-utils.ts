@@ -194,10 +194,10 @@ export interface DropTarget {
  *   a leaf. On an EXPANDED row with visible children it is the FIRST CHILD instead (like
  *   `"inside"`, but the line is drawn right below the row, `slot = overIndex + 1`), so the
  *   indicator is always next to the pointer, even with a very long subtree. To drop after an
- *   expanded row's subtree, use the upper band of the next row. Known limit: when the last
- *   visible row is itself expanded (and so is its parent chain), nesting the node as the LAST
- *   child of an ancestor is unreachable without collapsing that row first; the pointer below
- *   the last row means "end of the whole tree" instead, see `getEndDropTarget`.
+ *   expanded row's subtree, use the upper band of the next row. Known limit: for every
+ *   ancestor of the last visible row, except its direct parent, "become the last child of that
+ *   ancestor" is unreachable without collapsing something in its subtree; the pointer below the
+ *   last row means "end of the whole tree" instead, see `getEndDropTarget`.
  *
  * Not valid (`null`): the dragged node itself or one of its descendants, an out-of-range row,
  * an unknown `activeId`, and, with `maxDepth`, a zone that would put the node (with its whole

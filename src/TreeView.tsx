@@ -448,8 +448,17 @@ function TreeViewInner<T = unknown>(
     );
   }, [data, activeDragId, layoutExpanded, effectiveExpanded, search, rows.length, dragScroll, height, rowHeight]);
 
+  // While dragging a list that scrolls, one blank row at the end keeps the "end of the whole
+  // tree" zone (the pointer below the last row) at least a row tall, whatever padding/border the
+  // container has. Not added to a container that grows with its content (it would shift the
+  // layout under the pointer) nor to a short list, which already has blank space below.
+  const endRow =
+    activeDragId !== null &&
+    (rows.length + hiddenRows) * rowHeight > (height ?? dragScroll.view) - (height === undefined ? 0 : rowHeight)
+      ? 1
+      : 0;
   const { start, end, viewport, totalHeight, onScroll, scrollToIndex } = useVirtualRows({
-    count: rows.length + hiddenRows,
+    count: rows.length + hiddenRows + endRow,
     rowHeight,
     overscan,
     height,
