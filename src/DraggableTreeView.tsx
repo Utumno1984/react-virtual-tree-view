@@ -174,6 +174,20 @@ function DraggableTreeViewInner<T = unknown>(
   // move is reported and no indicator is shown (it would promise a drop that never happens).
   const hasDuplicateIds = useMemo(() => findDuplicateIds(data).length > 0, [data]);
 
+  // dnd-kit reports the end of a press only while the pressed row is still mounted: if the row
+  // leaves the DOM during the long-press wait (tree swapped, node removed) no callback fires.
+  // The finger lifting is the source of truth, whatever row it started on.
+  useEffect(() => {
+    if (!touchGesture) return;
+    const end = () => setTouchGesture(false);
+    document.addEventListener("touchend", end);
+    document.addEventListener("touchcancel", end);
+    return () => {
+      document.removeEventListener("touchend", end);
+      document.removeEventListener("touchcancel", end);
+    };
+  }, [touchGesture]);
+
   // Extra guard while a drag is active: dnd-kit already clears any selection on selectionchange,
   // this also stops a new one from being started. Listener removed on cleanup.
   useEffect(() => {
