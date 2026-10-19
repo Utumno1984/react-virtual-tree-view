@@ -90,6 +90,7 @@ test.describe("expand on chevron hover while dragging", () => {
     await page.mouse.up();
     await page.waitForTimeout(DELAY * 2);
     await expect(node(page, "docs")).toHaveAttribute("aria-expanded", "false");
+    await expect(log(page)).toContainText("none yet");
   });
 
   test("the child that just appeared accepts the sibling/child zones", async ({ page }) => {

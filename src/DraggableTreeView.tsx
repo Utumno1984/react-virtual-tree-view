@@ -71,9 +71,6 @@ function DraggableRow({ nodeId, dragDisabled, children, style, ...rest }: DragRo
  */
 export const CHEVRON_HOVER_EXPAND_DELAY = 400;
 
-/** Time (ms) after a hover expansion before the drop target is re-resolved (re-render done). */
-const SETTLE_DELAY = 50;
-
 const renderOverlay: TreeDndAdapter["renderOverlay"] = (content) => (
   <DragOverlay>{content}</DragOverlay>
 );
@@ -102,7 +99,9 @@ function DraggableTreeViewInner<T = unknown>(
   // Set by `useAutoScroll` while it runs: cached container rect + scrollTop for the resolver.
   const geometryRef = useRef<(() => ContainerGeometry) | null>(null);
   // Re-resolves the drop target for the current pointer (set by the drag effect below).
-  const refreshRef = useRef<(() => void) | null>(null);
+  // `findChevron = false` skips the chevron search (auto-scroll frames, scroll events): the
+  // rows move under the pointer, so any running hover timer is cancelled instead.
+  const refreshRef = useRef<((findChevron?: boolean) => void) | null>(null);
   const [previewStore] = useState(createPreviewStore);
   // Last known pointer position (viewport coordinates) while dragging. dnd-kit's `delta`
   // includes the scroll that happened during the drag, which the drop resolver already
@@ -195,20 +194,20 @@ function DraggableTreeViewInner<T = unknown>(
     // Chevron under the pointer whose expand timer runs (a collapsed node with children).
     let hoverId: TreeId | null = null;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    // Chevron just expanded by the timer, until the pointer leaves it or the tree has re-rendered.
+    // Chevron just expanded by the timer, until the pointer leaves it or the tree has re-rendered
+    // (the tree then calls `refreshRef`, which finds the row expanded).
     let firedId: TreeId | null = null;
-    let settleTimer: ReturnType<typeof setTimeout> | undefined;
     const clearTimer = () => {
       clearTimeout(timer);
       timer = undefined;
       hoverId = null;
       chevronPending.current = false;
     };
-    const refresh = () => {
+    const refresh = (findChevron = true) => {
       const { x, y } = pointer.current;
       // The whole stack under the pointer: the drag overlay's wrapper sits on top of the row.
       let hit: TreeId | null = null;
-      const resolveChevron = chevronRef.current;
+      const resolveChevron = findChevron ? chevronRef.current : null;
       if (resolveChevron) {
         const stack =
           typeof document.elementsFromPoint === "function"
@@ -234,8 +233,6 @@ function DraggableTreeViewInner<T = unknown>(
             if (id === null) return;
             firedId = id;
             expandRef.current?.(id);
-            // Once the node has rendered open, re-resolve the drop for the pointer.
-            settleTimer = setTimeout(refresh, SETTLE_DELAY);
           }, CHEVRON_HOVER_EXPAND_DELAY);
         }
       }
@@ -253,6 +250,11 @@ function DraggableTreeViewInner<T = unknown>(
       last = target;
       previewStore.set(target ? { projection: target.projection, slot: target.slot } : null);
     };
+    // Wheel / programmatic scroll while waiting: the chevron is no longer under the pointer.
+    const scrollEl = scrollElRef.current;
+    const onScroll = () => {
+      if (hoverId !== null) refresh(false);
+    };
     const onMove = (event: Event) => {
       const point = getEventPoint(event);
       if (!point) return;
@@ -264,11 +266,12 @@ function DraggableTreeViewInner<T = unknown>(
     // `touchmove` too: while a touch drag is active the browser may not deliver pointermove.
     document.addEventListener("pointermove", onMove);
     document.addEventListener("touchmove", onMove);
+    scrollEl?.addEventListener("scroll", onScroll, { passive: true });
     return () => {
+      scrollEl?.removeEventListener("scroll", onScroll);
       document.removeEventListener("pointermove", onMove);
       document.removeEventListener("touchmove", onMove);
       clearTimer();
-      clearTimeout(settleTimer);
       refreshRef.current = null;
       previewStore.set(null);
     };
@@ -276,7 +279,8 @@ function DraggableTreeViewInner<T = unknown>(
 
   // After an auto-scroll step the rows under the (still) pointer changed: refresh the
   // projection. Called at most once per frame, and only if the container really moved.
-  const onAutoScrolled = useCallback(() => refreshRef.current?.(), []);
+  // No chevron search here (it would force a layout right after the scroll write, every frame).
+  const onAutoScrolled = useCallback(() => refreshRef.current?.(false), []);
   useAutoScroll({
     active: activeId !== null,
     enabled: autoScroll,
@@ -331,6 +335,7 @@ function DraggableTreeViewInner<T = unknown>(
       resolverRef,
       expandRef,
       chevronRef,
+      refreshRef,
       scrollElRef,
       previewStore,
       renderDropIndicator,

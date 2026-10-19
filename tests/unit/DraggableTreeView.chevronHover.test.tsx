@@ -45,7 +45,7 @@ function mount(props: Partial<React.ComponentProps<typeof DraggableTreeView>> = 
   );
   const tree = view.getByRole("tree") as HTMLElement;
   tree.getBoundingClientRect = () => ({ top: 0, bottom: 400, left: 0, right: 300 }) as DOMRect;
-  return { ...view, onExpandedChange };
+  return { ...view, tree, onExpandedChange };
 }
 
 const move = (y = 10) =>
@@ -191,6 +191,56 @@ describe("DraggableTreeView: expand on chevron hover while dragging", () => {
     expect(vi.getTimerCount()).toBe(0);
     wait(2000);
     expect(onExpandedChange).not.toHaveBeenCalled();
+  });
+
+  it("publishes the indicator of the final drop right when the expansion renders (no settle delay)", () => {
+    const onTreeChange = vi.fn();
+    mount({ onTreeChange });
+    startDrag("a");
+    under = chevron("b");
+    move(48); // pointer on row b (index 1), middle band
+    expect(document.querySelector("[data-drop-indicator]")).toBeNull();
+    wait(400);
+    expect(expanded("b")).toBe("true");
+    // No further timers: the tree itself re-resolved the target after rendering.
+    expect(vi.getTimerCount()).toBe(0);
+    const indicator = document.querySelector("[data-drop-indicator]");
+    expect(indicator?.getAttribute("data-drop-zone")).toBe("inside");
+    act(() => {
+      document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    });
+    expect(onTreeChange).toHaveBeenCalledTimes(1);
+    expect(onTreeChange.mock.calls[0]![1]).toMatchObject({ nodeId: "a", toParentId: "b" });
+  });
+
+  it("cancels the timer when the tree scrolls while waiting on the chevron", () => {
+    const { tree, onExpandedChange } = mount();
+    startDrag("a");
+    under = chevron("b");
+    move(48);
+    wait(200);
+    under = null;
+    act(() => {
+      tree.dispatchEvent(new Event("scroll"));
+    });
+    wait(2000);
+    expect(expanded("b")).toBe("false");
+    expect(onExpandedChange).not.toHaveBeenCalled();
+    expect(document.querySelector("[data-drop-indicator]")).not.toBeNull();
+  });
+
+  it("does not map a chevron to a node when the DOM row and rows[] disagree", () => {
+    mount();
+    startDrag("a");
+    const fake = document.createElement("div");
+    fake.setAttribute("data-row-index", "1");
+    fake.setAttribute("data-node-id", "zzz");
+    fake.innerHTML = "<span data-toggle></span>";
+    row("b").parentElement!.appendChild(fake);
+    under = fake.firstElementChild;
+    move(48);
+    wait(1000);
+    expect(expanded("b")).toBe("false");
   });
 
   it("after the expansion the child row resolves a normal drop zone", () => {

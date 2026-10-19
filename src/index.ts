@@ -14,7 +14,7 @@ export type {
 } from "./types";
 export { TreeView } from "./TreeView";
 export { TreeContextMenu } from "./TreeContextMenu";
-export { DraggableTreeView } from "./DraggableTreeView";
+export { DraggableTreeView, CHEVRON_HOVER_EXPAND_DELAY } from "./DraggableTreeView";
 export {
   flattenTree,
   getProjection,

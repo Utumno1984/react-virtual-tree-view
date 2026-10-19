@@ -195,6 +195,25 @@ describe("DraggableTreeView auto-scroll", () => {
     expect(contentSpy.mock.calls.length - contentReads).toBe(0);
   });
 
+  it("does not search the element stack (elementsFromPoint) on auto-scroll frames", () => {
+    const { tree } = mount();
+    const stack = vi.fn(() => [] as Element[]);
+    document.elementsFromPoint = stack;
+    try {
+      startDrag();
+      runFrame(); // first scrolled frame
+      const scrolledAt = tree.scrollTop;
+      expect(scrolledAt).toBeGreaterThan(0);
+      const calls = stack.mock.calls.length;
+      for (let i = 0; i < 10; i++) runFrame();
+      expect(tree.scrollTop).toBeGreaterThan(scrolledAt);
+      expect(stack.mock.calls.length - calls).toBe(0);
+    } finally {
+      // @ts-expect-error jsdom has no elementsFromPoint: remove the stub
+      delete document.elementsFromPoint;
+    }
+  });
+
   it("re-reads the rect once after the page scrolled during the drag", () => {
     const { tree } = mount();
     const containerSpy = vi.fn(() => ({ top: 0, bottom: 400, left: 0, right: 300 }) as DOMRect);
