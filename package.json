@@ -1,6 +1,6 @@
 {
   "name": "react-virtual-tree-view",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Headless TreeView and DraggableTreeView for React, built for large trees and dnd-kit drag & drop.",
   "type": "module",
   "main": "./dist/index.cjs",
