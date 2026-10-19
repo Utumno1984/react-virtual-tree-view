@@ -188,11 +188,15 @@ test.describe("DraggableTreeView touch", () => {
     await page.getByTestId("dataset-large").dispatchEvent("click");
     await expect(node(page, "b-0")).toBeVisible();
     await expect(node(page, "a-todo")).toHaveCount(0);
-    await touch(cdp, "touchEnd");
+    // The finger lifts: the event no longer reaches the removed row, where dnd-kit listens
+    // (a touchend dispatched on the detached row would still be handled by dnd-kit itself, so
+    // it is sent to the document: only the document listener of the fix can see it).
+    await page.evaluate(() => document.body.dispatchEvent(new Event("touchend", { bubbles: true })));
     await expect.poll(() => sel("b-0")).not.toBe("none");
     // and it stays released: no new touch needed
     await page.waitForTimeout(400);
     expect(await sel("b-0")).not.toBe("none");
+    await touch(cdp, "touchEnd"); // tidy up the CDP touch
   });
 
   test("the mouse keeps text selection on draggable rows", async ({ page }) => {
