@@ -161,17 +161,45 @@ test.describe("DraggableTreeView touch", () => {
     const cdp = await page.context().newCDPSession(page);
     const box = await page.getByRole("tree").boundingBox();
     if (!box) throw new Error("tree not visible");
-    const row = page.getByRole("treeitem").first();
-    const sel = () => row.evaluate((el) => getComputedStyle(el).userSelect);
+    // Rows are virtualized: the first treeitem in the DOM may be an overscan row outside the
+    // viewport, and it is unmounted/replaced while the (inertial) scroll is still running. So
+    // wait for the scroll to settle, then pick a row actually inside the visible tree area.
+    const sel = (id: string) => node(page, id).evaluate((el) => getComputedStyle(el).userSelect);
 
     await swipeUp(cdp, { x: box.x + box.width / 2, y: box.y + box.height - 40 }, 300);
     await expect.poll(() => scrollTop(page)).toBeGreaterThan(50);
-    await expect.poll(sel).not.toBe("none");
-    const rb = await row.boundingBox();
-    if (!rb) throw new Error("row not visible");
-    await touch(cdp, "touchStart", { x: rb.x + rb.width / 2, y: rb.y + rb.height / 2 });
+    await page.getByRole("tree").evaluate(
+      (el) =>
+        new Promise<void>((resolve) => {
+          let last = -1;
+          let stable = 0;
+          const tick = () => {
+            stable = el.scrollTop === last ? stable + 1 : 0;
+            last = el.scrollTop;
+            if (stable >= 5) resolve();
+            else requestAnimationFrame(tick);
+          };
+          tick();
+        }),
+    );
+    const visible = await page.getByRole("tree").evaluate((tree) => {
+      const t = tree.getBoundingClientRect();
+      for (const el of tree.querySelectorAll('[role="treeitem"]')) {
+        const r = el.getBoundingClientRect();
+        if (r.top >= t.top && r.bottom <= t.bottom) {
+          return {
+            id: el.getAttribute("data-node-id") as string,
+            x: r.x + r.width / 2,
+            y: r.y + r.height / 2,
+          };
+        }
+      }
+      throw new Error("no visible row");
+    });
+    await expect.poll(() => sel(visible.id)).not.toBe("none");
+    await touch(cdp, "touchStart", { x: visible.x, y: visible.y });
     await touch(cdp, "touchEnd");
-    await expect.poll(sel).not.toBe("none");
+    await expect.poll(() => sel(visible.id)).not.toBe("none");
   });
 
   test("the pressed row removed by a data swap before touchend: rows selectable again (#66)", async ({
