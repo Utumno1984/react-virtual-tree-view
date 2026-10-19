@@ -65,6 +65,12 @@ function DraggableRow({ nodeId, dragDisabled, children, style, ...rest }: DragRo
   );
 }
 
+/**
+ * Time (ms) the pointer must rest on the chevron of a collapsed node, while dragging, before
+ * the node expands. Leaving the chevron earlier cancels it.
+ */
+export const CHEVRON_HOVER_EXPAND_DELAY = 400;
+
 const renderOverlay: TreeDndAdapter["renderOverlay"] = (content) => (
   <DragOverlay>{content}</DragOverlay>
 );
@@ -85,11 +91,17 @@ function DraggableTreeViewInner<T = unknown>(
   const [touchGesture, setTouchGesture] = useState(false);
   const resolverRef = useRef<DropResolver | null>(null);
   const expandRef = useRef<((id: TreeId) => void) | null>(null);
+  const chevronRef = useRef<((el: Element | null) => TreeId | null) | null>(null);
+  // True while the pointer rests on the chevron of a collapsed node and the expand timer runs:
+  // no drop is decided there (no indicator, a release does not move the node).
+  const chevronPending = useRef(false);
   const scrollElRef = useRef<HTMLElement | null>(null);
   // Set by `useAutoScroll` while it runs: cached container rect + scrollTop for the resolver.
   const geometryRef = useRef<(() => ContainerGeometry) | null>(null);
   // Re-resolves the drop target for the current pointer (set by the drag effect below).
-  const refreshRef = useRef<(() => void) | null>(null);
+  // `findChevron = false` skips the chevron search (auto-scroll frames, scroll events): the
+  // rows move under the pointer, so any running hover timer is cancelled instead.
+  const refreshRef = useRef<((findChevron?: boolean) => void) | null>(null);
   const [previewStore] = useState(createPreviewStore);
   // Last known pointer position (viewport coordinates) while dragging. dnd-kit's `delta`
   // includes the scroll that happened during the drag, which the drop resolver already
@@ -179,19 +191,69 @@ function DraggableTreeViewInner<T = unknown>(
     // The resolver memoizes by (row under the pointer, zone of that row): while those do
     // not change it returns the same object and the store is not touched.
     let last: DropTarget | null | undefined;
-    const refresh = () => {
+    // Chevron under the pointer whose expand timer runs (a collapsed node with children).
+    let hoverId: TreeId | null = null;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // Chevron just expanded by the timer, until the pointer leaves it or the tree has re-rendered
+    // (the tree then calls `refreshRef`, which finds the row expanded).
+    let firedId: TreeId | null = null;
+    const clearTimer = () => {
+      clearTimeout(timer);
+      timer = undefined;
+      hoverId = null;
+      chevronPending.current = false;
+    };
+    const refresh = (findChevron = true) => {
       const { x, y } = pointer.current;
+      // The whole stack under the pointer: the drag overlay's wrapper sits on top of the row.
+      let hit: TreeId | null = null;
+      const resolveChevron = findChevron ? chevronRef.current : null;
+      if (resolveChevron) {
+        const stack =
+          typeof document.elementsFromPoint === "function"
+            ? document.elementsFromPoint(x, y)
+            : [document.elementFromPoint?.(x, y) ?? null];
+        for (const el of stack) {
+          hit = resolveChevron(el);
+          if (hit !== null) break;
+        }
+      }
+      if (hit !== firedId) firedId = null;
+      // The dragged node itself is never expanded by its own drag; one just expanded by the
+      // timer is only waiting for its re-render (its chevron still reads "collapsed").
+      const hovered = hit !== null && hit !== activeId && hit !== firedId ? hit : null;
+      if (hovered !== hoverId) {
+        clearTimer();
+        if (hovered !== null) {
+          hoverId = hovered;
+          chevronPending.current = true;
+          timer = setTimeout(() => {
+            const id = hoverId;
+            clearTimer();
+            if (id === null) return;
+            firedId = id;
+            expandRef.current?.(id);
+          }, CHEVRON_HOVER_EXPAND_DELAY);
+        }
+      }
       const target =
-        resolverRef.current?.(
-          x,
-          y,
-          activeId,
-          subtreeHeight.current,
-          geometryRef.current?.(),
-        ) ?? null;
+        hovered !== null
+          ? null
+          : (resolverRef.current?.(
+              x,
+              y,
+              activeId,
+              subtreeHeight.current,
+              geometryRef.current?.(),
+            ) ?? null);
       if (target === last) return;
       last = target;
       previewStore.set(target ? { projection: target.projection, slot: target.slot } : null);
+    };
+    // Wheel / programmatic scroll while waiting: the chevron is no longer under the pointer.
+    const scrollEl = scrollElRef.current;
+    const onScroll = () => {
+      if (hoverId !== null) refresh(false);
     };
     const onMove = (event: Event) => {
       const point = getEventPoint(event);
@@ -204,9 +266,12 @@ function DraggableTreeViewInner<T = unknown>(
     // `touchmove` too: while a touch drag is active the browser may not deliver pointermove.
     document.addEventListener("pointermove", onMove);
     document.addEventListener("touchmove", onMove);
+    scrollEl?.addEventListener("scroll", onScroll, { passive: true });
     return () => {
+      scrollEl?.removeEventListener("scroll", onScroll);
       document.removeEventListener("pointermove", onMove);
       document.removeEventListener("touchmove", onMove);
+      clearTimer();
       refreshRef.current = null;
       previewStore.set(null);
     };
@@ -214,7 +279,8 @@ function DraggableTreeViewInner<T = unknown>(
 
   // After an auto-scroll step the rows under the (still) pointer changed: refresh the
   // projection. Called at most once per frame, and only if the container really moved.
-  const onAutoScrolled = useCallback(() => refreshRef.current?.(), []);
+  // No chevron search here (it would force a layout right after the scroll write, every frame).
+  const onAutoScrolled = useCallback(() => refreshRef.current?.(false), []);
   useAutoScroll({
     active: activeId !== null,
     enabled: autoScroll,
@@ -231,6 +297,8 @@ function DraggableTreeViewInner<T = unknown>(
       setActiveId(null);
       setTouchGesture(false);
       if (hasDuplicateIds) return;
+      // Released on the chevron of a collapsed node: no drop was decided there.
+      if (chevronPending.current) return;
       const { x, y } = pointer.current;
       const target = resolverRef.current?.(
         x,
@@ -266,6 +334,8 @@ function DraggableTreeViewInner<T = unknown>(
       RowShell: DraggableRow,
       resolverRef,
       expandRef,
+      chevronRef,
+      refreshRef,
       scrollElRef,
       previewStore,
       renderDropIndicator,
@@ -305,7 +375,9 @@ ForwardedDraggableTreeView.displayName = "DraggableTreeView";
  * it the next sibling (or the first child, if the row is expanded with visible children). A live indicator shows the result: a
  * line for the two sibling bands, a highlight of the whole row for "becomes a child". The
  * dragged node's descendants are hidden meanwhile and travel with it. Dropping on a collapsed
- * parent expands it. Trees with duplicate ids never report a move and show no indicator. The
+ * parent expands it. Resting the pointer for 400 ms (`CHEVRON_HOVER_EXPAND_DELAY`) on the
+ * chevron of a collapsed node with children expands it (also when the node is disabled: it is
+ * only a view change); no drop is decided on that chevron meanwhile. Trees with duplicate ids never report a move and show no indicator. The
  * dragged node itself and a zone refused by `maxDepth` are not drop targets (no indicator,
  * no move). Disabled nodes cannot be dragged but are valid targets in every band.
  *

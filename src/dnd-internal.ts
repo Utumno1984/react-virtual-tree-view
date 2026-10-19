@@ -81,6 +81,16 @@ export interface TreeDndAdapter {
   scrollElRef: MutableRefObject<HTMLElement | null>;
   /** The tree assigns a function that expands a node (state + `onExpandedChange`). */
   expandRef: MutableRefObject<((id: TreeId) => void) | null>;
+  /**
+   * The tree assigns a function that maps the element under the pointer to the id of a
+   * COLLAPSED node with children whose chevron it is (otherwise `null`).
+   */
+  chevronRef: MutableRefObject<((el: Element | null) => TreeId | null) | null>;
+  /**
+   * Re-resolves the drop target (and the chevron hover) for the current pointer while a drag
+   * runs. The tree calls it after reassigning its refs when `rows` change during a drag.
+   */
+  refreshRef: MutableRefObject<((findChevron?: boolean) => void) | null>;
   /** Live projection shown by the drop indicator. */
   previewStore: PreviewStore;
   /** Custom indicator content; the default is a minimal line. */

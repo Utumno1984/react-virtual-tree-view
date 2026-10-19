@@ -796,6 +796,31 @@ function TreeViewInner<T = unknown>(
     };
   }, [expandRef, effectiveExpanded, onExpandedChange]);
 
+  const chevronRef = dnd?.chevronRef;
+  useEffect(() => {
+    if (!chevronRef) return;
+    chevronRef.current = (el) => {
+      const container = containerRef.current;
+      if (!el || !container || !container.contains(el)) return null;
+      if (!el.closest("[data-toggle]")) return null;
+      const rowEl = el.closest<HTMLElement>("[data-row-index]");
+      const row = rowEl ? rows[Number(rowEl.dataset.rowIndex)] : undefined;
+      // The DOM row must belong to the same node (it can be older than `rows` by one commit).
+      if (!row || String(row.item.node.id) !== rowEl!.dataset.nodeId) return null;
+      return row.item.hasChildren && !row.isExpanded ? row.item.node.id : null;
+    };
+    return () => {
+      chevronRef.current = null;
+    };
+  }, [chevronRef, rows]);
+
+  // Declared after the effects above: when `rows` change during a drag (e.g. a hover
+  // expansion has rendered), the resolvers are up to date and the drop target is re-resolved.
+  const refreshRef = dnd?.refreshRef;
+  useEffect(() => {
+    refreshRef?.current?.();
+  }, [refreshRef, rows]);
+
   const renderBody = (index: number, state: RenderNodeState, interactive: boolean) => {
     const { item } = rows[index]!;
     const { node, hasChildren } = item;
