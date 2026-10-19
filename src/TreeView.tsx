@@ -796,6 +796,22 @@ function TreeViewInner<T = unknown>(
     };
   }, [expandRef, effectiveExpanded, onExpandedChange]);
 
+  const chevronRef = dnd?.chevronRef;
+  useEffect(() => {
+    if (!chevronRef) return;
+    chevronRef.current = (el) => {
+      const container = containerRef.current;
+      if (!el || !container || !container.contains(el)) return null;
+      if (!el.closest("[data-toggle]")) return null;
+      const rowEl = el.closest<HTMLElement>("[data-row-index]");
+      const row = rowEl ? rows[Number(rowEl.dataset.rowIndex)] : undefined;
+      return row && row.item.hasChildren && !row.isExpanded ? row.item.node.id : null;
+    };
+    return () => {
+      chevronRef.current = null;
+    };
+  }, [chevronRef, rows]);
+
   const renderBody = (index: number, state: RenderNodeState, interactive: boolean) => {
     const { item } = rows[index]!;
     const { node, hasChildren } = item;

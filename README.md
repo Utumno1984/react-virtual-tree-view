@@ -295,6 +295,14 @@ children. To drop a node after an expanded row's subtree, use the upper band of 
 `maxDepth`, the first-child reading of an expanded row's lower band is refused (not demoted to a
 sibling) when it would exceed the limit.
 
+**Expand on hover.** While dragging, resting the pointer on the chevron of a collapsed node that has
+children expands it after 400 ms, so you can drop between its children (it uses the normal expansion:
+state and `onExpandedChange`). Leaving the chevron earlier cancels it; leaves and already expanded
+nodes start nothing; the dragged node is never expanded by its own drag. While the pointer waits on
+the chevron no drop is decided (no indicator; releasing there moves nothing). A **disabled** node
+expands too: expanding is a view change, not a drop. Once open, the pointer sits on a normal row
+again and the zones above apply. The wait is cancelled when the drag ends or is cancelled, and on unmount.
+
 A pointer **below the last row** of the list (the blank space under a short list, or the very bottom
 edge of the container when the list is scrolled to its end) means "the end of the whole tree": the
 last position among the roots.
