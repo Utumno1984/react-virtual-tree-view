@@ -172,6 +172,57 @@ describe("DraggableTreeView", () => {
       }
     });
 
+    it("the pressed row removed from data mid-press: touchend anywhere ends the gesture (#66)", () => {
+      vi.useFakeTimers();
+      const { rerender } = render(<DraggableTreeView data={tree} defaultExpandedIds={["p"]} />);
+      touchStart(row("A"));
+      expect(noSelect("q")).toBe(true);
+      const without: TreeNode[] = [
+        { id: "p", label: "Parent", children: [{ id: 3, label: "Charlie" }] },
+        { id: "q", label: "Other" },
+      ];
+      rerender(<DraggableTreeView data={without} defaultExpandedIds={["p"]} />);
+      expect(row("A")).toBeNull();
+      // the finger lifts: the event no longer targets the removed row
+      fireEvent.touchEnd(document.body);
+      act(() => void vi.advanceTimersByTime(400));
+      for (const id of ["p", "3", "q"]) expect(noSelect(id)).toBe(false);
+      expect(selectStartPrevented()).toBe(false);
+    });
+
+    it("after the stuck press, the right button opens the context menu without a new touch (#66)", () => {
+      vi.useFakeTimers();
+      const items = () => [{ id: "one", label: "One", onSelect: () => {} }];
+      const view = (data: TreeNode[]) => (
+        <DraggableTreeView data={data} defaultExpandedIds={["p"]} contextMenu={{ items }} />
+      );
+      const { rerender } = render(view(tree));
+      touchStart(row("A"));
+      rerender(view([{ id: "q", label: "Other" }]));
+      const fire = () => fireEvent.contextMenu(row("q"), { clientX: 5, clientY: 5 });
+      // during the press the menu is suppressed (long-press of #60)
+      fire();
+      expect(screen.queryByRole("menu")).toBeNull();
+      fireEvent.touchEnd(document.body);
+      fire();
+      expect(screen.queryByRole("menu")).not.toBeNull();
+    });
+
+    it("touchcancel on the document also ends the gesture, and the listeners are removed (#66)", () => {
+      vi.useFakeTimers();
+      const remove = vi.spyOn(document, "removeEventListener");
+      const { unmount } = render(<DraggableTreeView data={tree} defaultExpandedIds={["p"]} />);
+      touchStart(row("A"));
+      expect(noSelect("q")).toBe(true);
+      fireEvent.touchCancel(document.body);
+      expect(noSelect("q")).toBe(false);
+      // gesture over: the listeners were removed with the effect cleanup
+      expect(
+        remove.mock.calls.filter(([t]) => t === "touchend" || t === "touchcancel").length,
+      ).toBeGreaterThanOrEqual(2);
+      unmount();
+    });
+
     it("the mouse never removes text selection", () => {
       render(<DraggableTreeView data={tree} defaultExpandedIds={["p"]} />);
       fireEvent.mouseDown(row("A"), { button: 0, clientX: 10, clientY: 10 });
